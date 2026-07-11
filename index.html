@@ -565,8 +565,10 @@ function renderTracker(){
   const body=$('trackBody');body.innerHTML='';
   const filtered=apps.filter(a=>!q||(a.company+a.role+a.notes).toLowerCase().includes(q));
   $('emptyTrack').style.display=filtered.length?'none':'block';
+  const today=new Date().toISOString().slice(0,10);
   filtered.forEach(a=>{
     const nMats=(a.materials||[]).length;
+    const due=a.followup&&a.followup<=today&&!['rejected','offer'].includes(a.status);
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td><input value="${esc(a.company)}" data-f="company" style="border:none;background:none;padding:4px 0"></td>
@@ -574,9 +576,9 @@ function renderTracker(){
       <td><select data-f="status">${STATUSES.map(s=>`<option ${a.status===s?'selected':''}>${s}</option>`).join('')}</select></td>
       <td><select data-f="referral"><option ${a.referral==='no'?'selected':''}>no</option><option ${a.referral==='sent'?'selected':''}>sent</option><option ${a.referral==='got'?'selected':''}>got</option></select></td>
       <td><input type="date" value="${a.applied||''}" data-f="applied" style="border:none;background:none"></td>
-      <td><input type="date" value="${a.followup||''}" data-f="followup" style="border:none;background:none"></td>
+      <td><input type="date" value="${a.followup||''}" data-f="followup" style="border:none;background:none${due?';color:#ff8b8b;font-weight:700':''}" ${due?'title="Follow-up due!"':''}></td>
       <td><input value="${esc(a.notes||'')}" data-f="notes" placeholder="link / notes" style="border:none;background:none;padding:4px 0"></td>
-      <td style="white-space:nowrap"><button class="btn ghost sm" data-mat="${a.id}" title="Saved materials">📄${nMats||''}</button><button class="btn ghost sm" data-del="${a.id}">✕</button></td>`;
+      <td style="white-space:nowrap"><button class="btn ghost sm" data-mail="${a.id}" title="Draft follow-up email">✉</button><button class="btn ghost sm" data-mat="${a.id}" title="Saved materials">📄${nMats||''}</button><button class="btn ghost sm" data-del="${a.id}">✕</button></td>`;
     tr.querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{
       a[el.dataset.f]=el.value;
       if(el.dataset.f==='status'&&el.value==='applied'&&!a.followup){a.followup=new Date(Date.now()+7*864e5).toISOString().slice(0,10);store.set('apps',apps);renderTracker();return}
@@ -584,6 +586,16 @@ function renderTracker(){
     });
     tr.querySelector('[data-del]').onclick=()=>{store.set('apps',apps.filter(x=>x.id!==a.id));renderTracker();renderHome()};
     tr.querySelector('[data-mat]').onclick=()=>{openMats.has(a.id)?openMats.delete(a.id):openMats.add(a.id);renderTracker()};
+    tr.querySelector('[data-mail]').onclick=()=>{
+      const p=store.get('profile',{});
+      const subj='Following up on my '+(a.role||'application')+(a.company?' application at '+a.company:'');
+      const mailBody='Hi,\n\nI applied for the '+(a.role||'role')+(a.company?' position at '+a.company:'')+(a.applied?' on '+a.applied:'')
+        +' and wanted to warmly follow up — I remain very interested and believe my background is a strong fit.\n\n'
+        +'I would love the chance to discuss how I can contribute. Happy to share anything else that would be helpful.\n\n'
+        +'Best regards,\n'+(p.name||'')+(p.phone?'\n'+p.phone:'')+(p.linkedin?'\n'+p.linkedin:'');
+      location.href='mailto:?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(mailBody);
+      if(a.status==='applied'&&a.followup&&a.followup<=today){a.followup=new Date(Date.now()+7*864e5).toISOString().slice(0,10);store.set('apps',apps);renderTracker()}
+    };
     body.appendChild(tr);
     if(openMats.has(a.id)){
       const tr2=document.createElement('tr');
