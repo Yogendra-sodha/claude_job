@@ -173,6 +173,7 @@
       <div class="row">
         <button class="btn" id="saveProfile">Save profile</button>
         <button class="btn ghost" id="copyExt">Copy profile for Autofill extension</button>
+        <button class="btn ghost" id="printResume">🖨 Printable resume (PDF)</button>
         <span class="small" id="profileSaved"></span>
       </div>
       <p class="hint">The Autofill extension fills application forms on job sites (name, email, phone, LinkedIn…) in one click — see the <code>extension</code> folder next to this file for 1-minute install steps.</p>
@@ -381,6 +382,34 @@ $('copyExt').onclick=()=>{
   const p=store.get('profile',{});
   navigator.clipboard.writeText(JSON.stringify({fullName:p.name||'',email:p.email||'',phone:p.phone||'',location:p.location||'',linkedin:p.linkedin||'',portfolio:p.portfolio||'',years:p.years||'',summary:p.summary||''},null,2));
   toast('Copied — paste into the extension popup');
+};
+$('printResume').onclick=()=>{
+  const p=store.get('profile',{});
+  if(!p.name){toast('Fill and save your profile first');return}
+  const w=window.open('','_blank');
+  if(!w){toast('Popup blocked — allow popups for this page');return}
+  const e2=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  const contact=[p.email,p.phone,p.location,p.linkedin,p.portfolio].filter(Boolean).join('  |  ');
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>'+e2(p.name)+' — Resume</title><style>'
+    +'body{font-family:Calibri,Arial,Helvetica,sans-serif;color:#111;max-width:820px;margin:24px auto;padding:0 28px;font-size:14px;line-height:1.45}'
+    +'h1{font-size:26px;margin:0}.t{font-size:15px;color:#333;margin:2px 0 6px}'
+    +'.c{font-size:12.5px;color:#444;border-bottom:2px solid #222;padding-bottom:10px;margin-bottom:14px}'
+    +'h2{font-size:13.5px;text-transform:uppercase;letter-spacing:1px;border-bottom:1px solid #999;padding-bottom:3px;margin:18px 0 6px}'
+    +'pre{font-family:inherit;white-space:pre-wrap;margin:0}'
+    +'.no-print{position:fixed;top:10px;right:10px;padding:8px 14px;cursor:pointer}'
+    +'@media print{.no-print{display:none}body{margin:0 auto}}'
+    +'</style></head><body>'
+    +'<button class="no-print" onclick="window.print()">🖨 Print / Save as PDF</button>'
+    +'<h1>'+e2(p.name)+'</h1>'
+    +(p.title?'<div class="t">'+e2(p.title)+(p.years?' · '+e2(p.years)+' yrs experience':'')+'</div>':'')
+    +'<div class="c">'+e2(contact)+'</div>'
+    +(p.summary?'<h2>Summary</h2><pre>'+e2(p.summary)+'</pre>':'')
+    +(p.skills?'<h2>Skills</h2><pre>'+e2(p.skills)+'</pre>':'')
+    +(p.experience?'<h2>Experience</h2><pre>'+e2(p.experience)+'</pre>':'')
+    +(p.education?'<h2>Education & Certifications</h2><pre>'+e2(p.education)+'</pre>':'')
+    +'</body></html>');
+  w.document.close();
+  toast('Tip: for a job-specific resume, paste tailored bullets from Generate into Experience first');
 };
 
 /* ---------- FIND ---------- */
