@@ -30,13 +30,13 @@ cd "c:/Users/yuvis/OneDrive/Desktop/Weekend/claude_job" && node -e "const fs=req
       with contact name + stored JD. saveGen stores jd. Generate gets optional "contact name" field.
 - [x] R2. Dashboard "Today's actions" panel: follow-ups due, applied-but-no-referral-ask nudges,
       contacts still in "to-message". Each with a jump button.
-- [ ] R3. Materials library: saveGen also saves the generated text; Tracker row expand (📄) shows saved
+- [x] R3. Materials library: saveGen also saves the generated text; Tracker row expand (📄) shows saved
       cover letter/messages per application so nothing is lost; copy buttons.
-- [ ] R4. Resume builder/export: printable tailored-resume page (profile + tailored bullets pasted in),
+- [x] R4. Resume builder/export: printable tailored-resume page (profile + tailored bullets pasted in),
       opens print dialog → save as PDF. ATS-clean single-column format.
-- [ ] R5. Follow-up automation aids: when status→applied, auto-suggest followup date (+7d);
+- [x] R5. Follow-up automation aids: when status→applied, auto-suggest followup date (+7d);
       mailto: link generation with prefilled follow-up email subject/body.
-- [ ] R6. Extension v1.1: fill cover-letter textareas from a stored "current cover letter"
+- [x] R6. Extension v1.1: fill cover-letter textareas from a stored "current cover letter"
       (extension popup textarea slot); more selectors (Workday data-automation-id patterns).
 - [ ] R7. Feed improvements: "hide jobs I've saved/applied" (match vs tracker), save-for-later button
       on feed cards (status=saved), remember last feed results in localStorage.
@@ -59,3 +59,9 @@ cd "c:/Users/yuvis/OneDrive/Desktop/Weekend/claude_job" && node -e "const fs=req
 - Free APIs verified live w/ CORS: remotive.com/api, arbeitnow.com/api, remoteok.com/api.
 - Adzuna optional (user must get free key) — UI already in Job Feed tab.
 - User's OpenAI key mode already supported; default is free/manual prompt-copy mode.
+
+## Done log additions
+- 2026-07-11 09:55 EDT — R3: materials library (auto-attach generated text to app, 📄 Tracker expander, dedupe saveGen) — 22e3693
+- 2026-07-11 10:00 EDT — R4: printable ATS resume (Profile button → print/PDF window) — c164c4e
+- 2026-07-11 10:05 EDT — R5: follow-up helpers (✉ mailto draft, overdue red highlight, auto +7d) — a874e87
+- 2026-07-11 10:08 EDT — R6: extension v1.1 (cover-letter slot fills cover letter/why-us textareas) — 591ad7b
