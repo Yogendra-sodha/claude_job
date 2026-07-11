@@ -114,6 +114,7 @@
     <button data-v="find">Find Jobs</button>
     <button data-v="feed">Job Feed</button>
     <button data-v="generate">Generate</button>
+    <button data-v="outreach">Referrals</button>
     <button data-v="tracker">Tracker</button>
     <button data-v="settings">Settings</button>
   </nav>
@@ -126,6 +127,10 @@
     <p class="sub">One place to find jobs, tailor every application, write outreach, and track it all — without re-typing your life story on every form.</p>
     <div class="card">
       <div class="statgrid" id="homeStats"></div>
+    </div>
+    <div class="card" id="todayCard">
+      <h3 style="margin:0 0 10px">📌 Today's actions</h3>
+      <div id="todayList"></div>
     </div>
     <div class="grid2">
       <div class="card">
@@ -237,6 +242,7 @@
         <div class="field"><label>Company</label><input id="g_company" placeholder="Company name"></div>
         <div class="field"><label>Role title</label><input id="g_role" placeholder="Role you're applying for"></div>
       </div>
+      <div class="field"><label>Contact name (optional — personalizes referral/recruiter messages)</label><input id="g_contact" placeholder="e.g. Priya Sharma — the person you're messaging"></div>
       <div class="field"><label>Paste the full job description</label><textarea id="g_jd" style="min-height:170px" placeholder="Paste the entire job posting here..."></textarea></div>
       <div class="row">
         <button class="btn" id="scoreBtn">① Score fit (instant, free)</button>
@@ -276,6 +282,13 @@
         <button class="btn ghost sm" id="saveGen">Save to Tracker →</button>
       </div>
     </div>
+  </section>
+
+  <!-- OUTREACH / REFERRALS -->
+  <section class="view" id="v-outreach">
+    <h2>Referrals & Outreach</h2>
+    <p class="sub">Referrals multiply your interview odds. For each application: find 2–3 people at the company, add them here, send each a personalized message (✉ prefills Generate), and track replies.</p>
+    <div id="outreachList"></div>
   </section>
 
   <!-- TRACKER -->
@@ -348,9 +361,11 @@ document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{
   document.querySelectorAll('#nav button').forEach(x=>x.classList.remove('active'));
   document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
   b.classList.add('active');$('v-'+b.dataset.v).classList.add('active');
-  if(b.dataset.v==='home')renderHome();
+  if(b.dataset.v==='home'){renderHome();renderToday()}
   if(b.dataset.v==='tracker')renderTracker();
+  if(b.dataset.v==='outreach')renderOutreach();
 });
+function goTab(v){document.querySelector('#nav button[data-v="'+v+'"]').click();window.scrollTo({top:0,behavior:'smooth'})}
 
 /* ---------- PROFILE ---------- */
 const PF=['name','title','email','phone','location','linkedin','portfolio','years','summary','skills','experience','education'];
@@ -446,12 +461,14 @@ Role: ${role}
 Job description:
 ${jd}
 `;
+  const contact=($('g_contact')?$('g_contact').value.trim():'');
+  const toName=contact?` Address it to ${contact.split(/\s+/)[0]} by name.`:'';
   const map={
     cover:`Write a concise, specific cover letter (max 250 words) for this candidate applying to the role. Use a confident, human tone — no clichés like "I am writing to express". Open with a hook tied to the company/role, map the candidate's real experience to the top 3 requirements, and end with a clear call to action. Only use facts present in the profile. Output just the letter.`,
     resume:`Rewrite the candidate's experience into 5–7 tailored, ATS-friendly resume bullet points optimised for THIS job. Start each with a strong action verb, quantify impact where the profile provides numbers, and weave in the job's key terminology — but never invent facts. Output only the bullets.`,
-    referral:`Write a short, warm LinkedIn message (under 90 words) the candidate can send to an employee at ${company} to request a referral for this role. Be polite, specific about why the fit is strong, easy to say yes to, and not pushy. Output only the message.`,
-    recruiter:`Write a brief, professional LinkedIn/InMail message (under 110 words) to the recruiter/hiring manager for this role at ${company}. Express genuine interest, state the 2 strongest reasons the candidate fits, and invite a conversation. Output only the message.`,
-    followup:`Write a polite follow-up email (under 130 words) to send ~1 week after applying to this role at ${company}, reaffirming interest and briefly restating the top reason the candidate is a strong fit. Include a subject line. Output only the email.`
+    referral:`Write a short, warm LinkedIn message (under 90 words) the candidate can send to an employee at ${company} to request a referral for this role.${toName} Be polite, specific about why the fit is strong, easy to say yes to, and not pushy. Output only the message.`,
+    recruiter:`Write a brief, professional LinkedIn/InMail message (under 110 words) to the recruiter/hiring manager for this role at ${company}.${toName} Express genuine interest, state the 2 strongest reasons the candidate fits, and invite a conversation. Output only the message.`,
+    followup:`Write a polite follow-up email (under 130 words) to send ~1 week after applying to this role at ${company}, reaffirming interest and briefly restating the top reason the candidate is a strong fit.${toName} Include a subject line. Output only the email.`
   };
   return base+`\nTASK:\n${map[kind]}`;
 }
@@ -493,8 +510,8 @@ $('saveGen').onclick=()=>{
   const company=$('g_company').value.trim(), role=$('g_role').value.trim();
   if(!company&&!role){toast('Add company/role first');return}
   const apps=store.get('apps',[]);
-  apps.unshift({id:Date.now(),company,role,status:'applied',referral:'no',applied:new Date().toISOString().slice(0,10),followup:'',notes:($('g_role').value?'Materials generated':'')});
-  store.set('apps',apps);toast('Saved to Tracker');
+  apps.unshift({id:Date.now(),company,role,status:'applied',referral:'no',applied:new Date().toISOString().slice(0,10),followup:'',notes:'Materials generated',jd:$('g_jd').value.trim().slice(0,5000),contacts:[]});
+  store.set('apps',apps);toast('Saved! Next: Referrals tab → ask 2–3 people');
 };
 
 /* ---------- TRACKER ---------- */
@@ -543,6 +560,83 @@ function renderHome(){
   $('aiBanner').innerHTML = (done<5?`<b>⚠️ Start here:</b> your profile is only ${Math.round(100*done/PF.length)}% complete. Fill <b>My Profile</b> so everything else can pull from it.`
     : s.mode==='openai'&&s.key ? `<b>⚡ API mode is on.</b> Generate produces polished materials in-app. You're all set — go to <b>Find Jobs</b>.`
     : `<b>✅ Profile ready.</b> You're in free mode — Generate copies a ready prompt for ChatGPT/Claude.ai. Add an OpenAI key in <b>Settings</b> for one-click in-app generation.`);
+}
+
+/* ---------- OUTREACH / REFERRALS ---------- */
+function peopleLinks(company,role){
+  const q=encodeURIComponent;
+  return [
+    ['Recruiters','https://www.linkedin.com/search/results/people/?keywords='+q('"'+company+'" recruiter')],
+    ['Hiring managers','https://www.linkedin.com/search/results/people/?keywords='+q('"'+company+'" '+(role?role.split(/\s+/)[0]+' ':'')+'manager')],
+    ['Future teammates','https://www.linkedin.com/search/results/people/?keywords='+q('"'+company+'" '+(role||''))],
+    ['Google X-ray','https://www.google.com/search?q='+q('site:linkedin.com/in "'+company+'" '+(role||'recruiter'))]
+  ];
+}
+const CSTATES=['to-message','messaged','replied','referred','declined'];
+function renderOutreach(){
+  const apps=store.get('apps',[]);
+  const active=apps.filter(a=>(a.company||a.role)&&!['rejected','offer'].includes(a.status));
+  const box=$('outreachList');
+  if(!active.length){box.innerHTML='<div class="card"><p class="small">No active applications yet. Generate materials for a job and click "Save to Tracker" (or add one in Tracker), then come back here to find people and ask for referrals.</p></div>';return}
+  box.innerHTML=active.map(a=>{
+    const links=peopleLinks(a.company||'',a.role||'').map(l=>'<a class="btn ghost sm" href="'+l[1]+'" target="_blank" rel="noopener">'+l[0]+' ↗</a>').join('');
+    const cons=(a.contacts||[]).map(c=>
+      '<div class="row" style="margin:6px 0;padding:7px 10px;background:rgba(255,255,255,.04);border-radius:8px">'
+      +(c.url?'<a href="'+esc(c.url)+'" target="_blank" rel="noopener"><b>'+esc(c.name)+'</b></a>':'<b>'+esc(c.name)+'</b>')
+      +'<select data-cstat data-app="'+a.id+'" data-cid="'+c.id+'">'+CSTATES.map(s=>'<option'+(c.status===s?' selected':'')+'>'+s+'</option>').join('')+'</select>'
+      +'<button class="btn sm" data-cmsg data-app="'+a.id+'" data-cid="'+c.id+'">✉ Message</button>'
+      +'<button class="btn ghost sm" data-cdel data-app="'+a.id+'" data-cid="'+c.id+'">✕</button></div>'
+    ).join('');
+    return '<div class="card"><div class="row" style="justify-content:space-between"><div><b>'+esc(a.company||'—')+'</b> · '+esc(a.role||'')+'</div><span class="small">'+((a.contacts||[]).length?(a.contacts.length+' contact'+(a.contacts.length>1?'s':'')):'goal: 2–3 people')+'</span></div>'
+      +'<div class="row" style="margin:10px 0">'+links+'</div>'
+      +(cons||'<p class="small" style="margin:6px 0">No contacts yet — open a search above, pick 2–3 people, add them:</p>')
+      +'<div class="row" style="margin-top:8px"><input placeholder="Name" data-cname="'+a.id+'" style="max-width:150px"><input placeholder="LinkedIn profile URL (optional)" data-curl="'+a.id+'" style="max-width:250px"><button class="btn sm" data-cadd="'+a.id+'">+ Add person</button></div></div>';
+  }).join('');
+  box.querySelectorAll('[data-cadd]').forEach(b=>b.onclick=()=>{
+    const id=+b.dataset.cadd;
+    const name=box.querySelector('[data-cname="'+id+'"]').value.trim();
+    if(!name){toast('Enter the person\'s name');return}
+    const url=box.querySelector('[data-curl="'+id+'"]').value.trim();
+    const apps2=store.get('apps',[]);const a=apps2.find(x=>x.id===id);if(!a)return;
+    (a.contacts=a.contacts||[]).push({id:Date.now(),name,url,status:'to-message',added:new Date().toISOString().slice(0,10)});
+    store.set('apps',apps2);renderOutreach();toast('Added — now send them a message ✉');
+  });
+  box.querySelectorAll('[data-cstat]').forEach(s=>s.onchange=()=>{
+    const apps2=store.get('apps',[]);const a=apps2.find(x=>x.id===+s.dataset.app);
+    const c=a&&(a.contacts||[]).find(x=>x.id===+s.dataset.cid);if(!c)return;
+    c.status=s.value;
+    if(s.value==='messaged')c.messaged=new Date().toISOString().slice(0,10);
+    if(s.value==='referred')a.referral='yes';
+    store.set('apps',apps2);
+  });
+  box.querySelectorAll('[data-cdel]').forEach(b=>b.onclick=()=>{
+    const apps2=store.get('apps',[]);const a=apps2.find(x=>x.id===+b.dataset.app);if(!a)return;
+    a.contacts=(a.contacts||[]).filter(x=>x.id!==+b.dataset.cid);
+    store.set('apps',apps2);renderOutreach();
+  });
+  box.querySelectorAll('[data-cmsg]').forEach(b=>b.onclick=()=>{
+    const apps2=store.get('apps',[]);const a=apps2.find(x=>x.id===+b.dataset.app);
+    const c=a&&(a.contacts||[]).find(x=>x.id===+b.dataset.cid);if(!a||!c)return;
+    $('g_company').value=a.company||'';$('g_role').value=a.role||'';$('g_contact').value=c.name;
+    if(a.jd)$('g_jd').value=a.jd;
+    curKind='referral';
+    document.querySelectorAll('#genTabs button').forEach(x=>x.classList.toggle('active',x.dataset.g==='referral'));
+    goTab('generate');toast('Referral message ready — click Generate');
+  });
+}
+function renderToday(){
+  const apps=store.get('apps',[]);const t=new Date().toISOString().slice(0,10);
+  const items=[];
+  apps.forEach(a=>{
+    if(['rejected','offer'].includes(a.status))return;
+    if(a.followup&&a.followup<=t)items.push({txt:'Follow up with <b>'+esc(a.company||'?')+'</b> ('+esc(a.role||'')+') — was due '+a.followup,tab:'generate'});
+    if(a.status==='applied'&&a.referral==='no'&&!(a.contacts||[]).length)items.push({txt:'Ask for a referral at <b>'+esc(a.company||'?')+'</b> — find 2–3 people',tab:'outreach'});
+    (a.contacts||[]).forEach(c=>{if(c.status==='to-message')items.push({txt:'Message <b>'+esc(c.name)+'</b> at '+esc(a.company||'?'),tab:'outreach'})});
+  });
+  $('todayList').innerHTML=items.length
+    ? items.slice(0,8).map(i=>'<div class="row" style="justify-content:space-between;margin:6px 0"><span class="small">'+i.txt+'</span><button class="btn ghost sm" data-today="'+i.tab+'">Open →</button></div>').join('')
+    : '<p class="small">Nothing due — fetch the Job Feed and start a new application 🚀</p>';
+  document.querySelectorAll('[data-today]').forEach(b=>b.onclick=()=>{goTab(b.dataset.today)});
 }
 
 /* ---------- JOB FEED ---------- */
@@ -645,7 +739,7 @@ $('importFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new 
 $('wipeAll').onclick=()=>{if(confirm('Erase ALL data on this device? This cannot be undone.')){['profile','apps','settings'].forEach(k=>localStorage.removeItem('jf_'+k));loadProfile();loadSettings();renderTracker();renderHome();toast('Erased')}};
 
 /* ---------- INIT ---------- */
-loadProfile();loadSettings();loadFeedCfg();renderHome();genModeLabel();
+loadProfile();loadSettings();loadFeedCfg();renderHome();renderToday();genModeLabel();
 </script>
 </body>
 </html>
