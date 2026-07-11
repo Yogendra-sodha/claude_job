@@ -6,24 +6,29 @@ Make JobFlow the fastest path through the user's real job-application journey:
 User (Yogendra) is away; work autonomously. He will NOT answer questions — make sensible decisions alone.
 
 ## Hard rules
-- STOP TIME: 2026-07-12 16:00 EST (20:00 UTC). After that: final commit+push, summary, end loop.
-- Usage cap: cannot read the meter. Be conservative: ONE small feature burst per wake-up,
-  then sleep 30–60 min (1800–3600s). If any sign of rate-limiting/errors, sleep 3600s.
+- STOP TIME: **2026-07-11 15:00 EDT (TODAY)**. Wrap-up cron fires 14:57 (job 9b732738).
+- Schedule: recurring cron 477818b2 fires hourly at :23 in THIS session (session-only —
+  VS Code window must stay open). Each firing = one burst.
+- LESSON (user was rightly angry): a turn can be killed mid-work by the usage cap with no retry.
+  Therefore: safety net FIRST. At every burst start: git status → if uncommitted changes exist,
+  validate + commit + push them BEFORE starting anything new. Keep bursts small (~15 tool calls).
 - EVERY burst: implement → validate JS parses (node) → `git add -A && git commit && git push`.
 - Never break the app: validate before commit. index.html must stay a single self-contained file.
 - No auto-apply bots / scraping (ToS risk). No external services that receive his data.
 - Commit messages: short imperative + Co-Authored-By Claude line.
 - NEVER mark backlog items done or write Done-log entries before the commit actually exists.
+- Playwright MCP tools are now available (mcp__playwright__*, load via ToolSearch) — use for the
+  R11 QA pass: browser_navigate to the file, click every tab, check console_messages for errors.
 
 ## Validate command
 cd "c:/Users/yuvis/OneDrive/Desktop/Weekend/claude_job" && node -e "const fs=require('fs');const m=fs.readFileSync('index.html','utf8').match(/<script>([\s\S]*?)<\/script>/);try{new Function(m[1]);console.log('OK')}catch(e){console.log('FAIL',e.message)}"
 
 ## Backlog (priority order — pick top unchecked item each burst)
-- [ ] R1. Referral flow: Referrals tab — per-application people-finder links (LinkedIn people search:
+- [x] R1. Referral flow: Referrals tab — per-application people-finder links (LinkedIn people search:
       recruiters / hiring managers / teammates + Google X-ray), contact list per application with
       status (to-message/messaged/replied/referred/declined), ✉ Message button prefills Generate
       with contact name + stored JD. saveGen stores jd. Generate gets optional "contact name" field.
-- [ ] R2. Dashboard "Today's actions" panel: follow-ups due, applied-but-no-referral-ask nudges,
+- [x] R2. Dashboard "Today's actions" panel: follow-ups due, applied-but-no-referral-ask nudges,
       contacts still in "to-message". Each with a jump button.
 - [ ] R3. Materials library: saveGen also saves the generated text; Tracker row expand (📄) shows saved
       cover letter/messages per application so nothing is lost; copy buttons.
@@ -46,6 +51,7 @@ cd "c:/Users/yuvis/OneDrive/Desktop/Weekend/claude_job" && node -e "const fs=req
 
 ## Done log (append one line per burst AFTER the commit exists: date/time UTC — what shipped — commit)
 - 2026-07-11 — v1: cockpit app (profile/find/generate/tracker/settings), fit score, free+API modes; v2: Job Feed + Autofill extension — 23f0bd7 (committed by user)
+- 2026-07-11 09:35 EDT — R1+R2: Referrals tab (people links, contacts, ✉ prefill), Today panel, jd stored on save, contact-name personalization — 5c9db8b
 
 ## Notes / decisions
 - Remote: https://github.com/Yogendra-sodha/claude_job.git branch master. Push verified working.
