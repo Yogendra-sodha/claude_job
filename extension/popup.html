@@ -1,0 +1,28 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body{font-family:"Segoe UI",Arial,sans-serif;width:330px;margin:0;padding:14px;background:#171a2b;color:#e7e9f3}
+  h1{font-size:15px;margin:0 0 10px;display:flex;align-items:center;gap:7px}
+  .dot{width:10px;height:10px;border-radius:50%;background:linear-gradient(135deg,#6d8bff,#8b7dff)}
+  textarea{width:100%;height:150px;background:#1e2238;color:#e7e9f3;border:1px solid #2a2f4a;border-radius:8px;padding:8px;font-size:12px;box-sizing:border-box;font-family:Consolas,monospace}
+  button{width:100%;margin-top:8px;padding:10px;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:13px}
+  #fill{background:linear-gradient(135deg,#6d8bff,#8b7dff);color:#fff}
+  #save{background:#242a45;color:#e7e9f3}
+  .s{font-size:12px;color:#9aa0be;margin-top:8px;min-height:16px;line-height:1.5}
+  summary{font-size:12px;cursor:pointer;color:#9aa0be;margin-top:12px}
+</style>
+</head>
+<body>
+<h1><span class="dot"></span>JobFlow Autofill</h1>
+<button id="fill">⚡ Fill form on this page</button>
+<div class="s" id="status"></div>
+<details id="profBox">
+  <summary>My profile (paste from JobFlow → My Profile → "Copy profile for Autofill extension")</summary>
+  <textarea id="json" placeholder='{"fullName":"...","email":"...","phone":"..."}'></textarea>
+  <button id="save">Save profile</button>
+</details>
+<script src="popup.js"></script>
+</body>
+</html>
