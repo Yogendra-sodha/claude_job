@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobFlow Autofill",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "One-click fill of job application forms using your JobFlow profile. Your data never leaves your device.",
   "permissions": ["activeTab", "scripting", "storage"],
   "host_permissions": ["<all_urls>"],

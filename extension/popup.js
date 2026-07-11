@@ -1,6 +1,6 @@
 const $ = id => document.getElementById(id);
 
-chrome.storage.local.get('profile').then(d => {
+chrome.storage.local.get(['profile', 'letter']).then(d => {
   if (d.profile) {
     $('json').value = JSON.stringify(d.profile, null, 2);
     $('status').textContent = 'Profile loaded: ' + (d.profile.fullName || '(no name set)');
@@ -8,7 +8,13 @@ chrome.storage.local.get('profile').then(d => {
     $('status').textContent = 'First time? Open the profile section below and paste your JobFlow profile.';
     $('profBox').open = true;
   }
+  if (d.letter) $('letter').value = d.letter;
 });
+
+$('saveLetter').onclick = async () => {
+  await chrome.storage.local.set({ letter: $('letter').value.trim() });
+  $('status').textContent = '✅ Cover letter saved — Fill will paste it into cover-letter boxes.';
+};
 
 $('save').onclick = async () => {
   try {
@@ -21,15 +27,15 @@ $('save').onclick = async () => {
 };
 
 $('fill').onclick = async () => {
-  const d = await chrome.storage.local.get('profile');
+  const d = await chrome.storage.local.get(['profile', 'letter']);
   if (!d.profile) { $('status').textContent = '⚠️ Save your profile first (section below).'; $('profBox').open = true; return; }
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   let results;
   try {
-    results = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: fillForm, args: [d.profile] });
+    results = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: fillForm, args: [d.profile, d.letter || ''] });
   } catch (e) {
     try {
-      results = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: fillForm, args: [d.profile] });
+      results = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: fillForm, args: [d.profile, d.letter || ''] });
     } catch (e2) {
       $('status').textContent = '⚠️ Cannot run on this page: ' + e2.message;
       return;
@@ -42,7 +48,7 @@ $('fill').onclick = async () => {
 };
 
 // Injected into the page. Must be fully self-contained.
-function fillForm(p) {
+function fillForm(p, letter) {
   const parts = (p.fullName || '').trim().split(/\s+/);
   const first = parts[0] || '';
   const last = parts.slice(1).join(' ') || '';
@@ -76,6 +82,11 @@ function fillForm(p) {
     if (!r.width && !r.height) continue; // skip invisible fields
     if (el.type === 'email' && p.email) { setVal(el, p.email); n++; continue; }
     if (el.type === 'tel' && p.phone) { setVal(el, p.phone); n++; continue; }
+    if (el.tagName === 'TEXTAREA' && letter) {
+      let d0 = [el.name, el.id, el.placeholder, el.getAttribute('aria-label'), el.getAttribute('data-automation-id')].filter(Boolean).join(' ');
+      const w0 = el.closest('label'); if (w0) d0 += ' ' + w0.textContent;
+      if (/cover[\s_-]*letter|why[\s_-]*(do[\s_-]*you|are[\s_-]*you|us\b|join)|motivation/i.test(d0)) { setVal(el, letter); n++; continue; }
+    }
     let desc = [el.name, el.id, el.placeholder, el.getAttribute('aria-label'), el.getAttribute('autocomplete'), el.getAttribute('data-automation-id')].filter(Boolean).join(' ');
     if (el.id) {
       try {
