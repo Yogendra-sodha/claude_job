@@ -510,18 +510,34 @@ $('saveGen').onclick=()=>{
   const company=$('g_company').value.trim(), role=$('g_role').value.trim();
   if(!company&&!role){toast('Add company/role first');return}
   const apps=store.get('apps',[]);
-  apps.unshift({id:Date.now(),company,role,status:'applied',referral:'no',applied:new Date().toISOString().slice(0,10),followup:'',notes:'Materials generated',jd:$('g_jd').value.trim().slice(0,5000),contacts:[]});
-  store.set('apps',apps);toast('Saved! Next: Referrals tab → ask 2–3 people');
+  let a=apps.find(x=>(x.company||'').toLowerCase()===company.toLowerCase()&&(x.role||'').toLowerCase()===role.toLowerCase());
+  if(!a){
+    a={id:Date.now(),company,role,status:'applied',referral:'no',applied:new Date().toISOString().slice(0,10),followup:new Date(Date.now()+7*864e5).toISOString().slice(0,10),notes:'Materials generated',jd:$('g_jd').value.trim().slice(0,5000),contacts:[],materials:[]};
+    apps.unshift(a);
+  }else if(!a.jd){a.jd=$('g_jd').value.trim().slice(0,5000)}
+  const out=$('genOut').textContent.trim();
+  let saved=false;
+  if(out&&!out.startsWith('Your generated text')&&!out.startsWith('Generating')&&!out.startsWith('⚠️')){
+    let text=out,label=curKind;
+    const marker='———— PROMPT PREVIEW ————';const ix=out.indexOf(marker);
+    if(ix>-1){text=out.slice(ix+marker.length).trim();label=curKind+' (prompt)'}
+    (a.materials=a.materials||[]).push({k:label,t:text.slice(0,20000),d:new Date().toISOString().slice(0,10)});
+    saved=true;
+  }
+  store.set('apps',apps);
+  toast(saved?'Saved — '+curKind+' attached (📄 in Tracker). Referrals next!':'Saved! Next: Referrals tab → ask 2–3 people');
 };
 
 /* ---------- TRACKER ---------- */
 const STATUSES=['saved','applied','referral','interview','offer','rejected'];
+const openMats=new Set();
 function renderTracker(){
   const apps=store.get('apps',[]);const q=($('trackSearch').value||'').toLowerCase();
   const body=$('trackBody');body.innerHTML='';
   const filtered=apps.filter(a=>!q||(a.company+a.role+a.notes).toLowerCase().includes(q));
   $('emptyTrack').style.display=filtered.length?'none':'block';
   filtered.forEach(a=>{
+    const nMats=(a.materials||[]).length;
     const tr=document.createElement('tr');
     tr.innerHTML=`
       <td><input value="${esc(a.company)}" data-f="company" style="border:none;background:none;padding:4px 0"></td>
@@ -531,10 +547,25 @@ function renderTracker(){
       <td><input type="date" value="${a.applied||''}" data-f="applied" style="border:none;background:none"></td>
       <td><input type="date" value="${a.followup||''}" data-f="followup" style="border:none;background:none"></td>
       <td><input value="${esc(a.notes||'')}" data-f="notes" placeholder="link / notes" style="border:none;background:none;padding:4px 0"></td>
-      <td><button class="btn ghost sm" data-del="${a.id}">✕</button></td>`;
-    tr.querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{a[el.dataset.f]=el.value;store.set('apps',apps)});
+      <td style="white-space:nowrap"><button class="btn ghost sm" data-mat="${a.id}" title="Saved materials">📄${nMats||''}</button><button class="btn ghost sm" data-del="${a.id}">✕</button></td>`;
+    tr.querySelectorAll('[data-f]').forEach(el=>el.onchange=()=>{
+      a[el.dataset.f]=el.value;
+      if(el.dataset.f==='status'&&el.value==='applied'&&!a.followup){a.followup=new Date(Date.now()+7*864e5).toISOString().slice(0,10);store.set('apps',apps);renderTracker();return}
+      store.set('apps',apps);
+    });
     tr.querySelector('[data-del]').onclick=()=>{store.set('apps',apps.filter(x=>x.id!==a.id));renderTracker();renderHome()};
+    tr.querySelector('[data-mat]').onclick=()=>{openMats.has(a.id)?openMats.delete(a.id):openMats.add(a.id);renderTracker()};
     body.appendChild(tr);
+    if(openMats.has(a.id)){
+      const tr2=document.createElement('tr');
+      const mats=a.materials||[];
+      tr2.innerHTML='<td colspan="8" style="background:rgba(255,255,255,.03);padding:10px 14px">'+(mats.length?mats.map((m,i)=>
+        `<div style="margin:8px 0"><div class="row" style="justify-content:space-between"><b class="small">${esc(m.k)} — ${m.d}</b><span><button class="btn ghost sm" data-mcopy="${i}">Copy</button><button class="btn ghost sm" data-mdel="${i}">✕</button></span></div><div class="small" style="white-space:pre-wrap;max-height:180px;overflow:auto;margin-top:4px">${esc(m.t)}</div></div>`
+      ).join(''):'<p class="small" style="margin:6px 0">No saved materials yet — generate in the Generate tab, then click "Save to Tracker".</p>')+'</td>';
+      tr2.querySelectorAll('[data-mcopy]').forEach(b=>b.onclick=()=>{navigator.clipboard.writeText(mats[+b.dataset.mcopy].t);toast('Copied')});
+      tr2.querySelectorAll('[data-mdel]').forEach(b=>b.onclick=()=>{mats.splice(+b.dataset.mdel,1);store.set('apps',apps);renderTracker()});
+      body.appendChild(tr2);
+    }
   });
 }
 function esc(s){return (s||'').replace(/"/g,'&quot;').replace(/</g,'&lt;')}
