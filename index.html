@@ -229,7 +229,7 @@
         </div>
         <p class="hint">Free key at developer.adzuna.com. The built-in sources are mostly remote/tech jobs — Adzuna adds all industries in your own city.</p>
       </details>
-      <div class="row"><button class="btn" id="feedBtn">Fetch &amp; rank jobs</button><span class="small" id="feedStatus"></span></div>
+      <div class="row"><button class="btn" id="feedBtn">Fetch &amp; rank jobs</button><label class="small" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="jf_hide" checked> Hide jobs already in my Tracker</label><span class="small" id="feedStatus"></span></div>
     </div>
     <div id="feedList"></div>
   </section>
@@ -749,36 +749,60 @@ async function fetchFeed(){
   all=all.filter(j=>{const k=(j.title+'|'+j.company).toLowerCase();if(seen.has(k))return false;seen.add(k);return true});
   all.sort((a2,b2)=>b2.score-a2.score);
   feedJobs=all;
+  try{store.set('feedCache',{ts:Date.now(),jobs:all.map(j=>({title:j.title,company:j.company,loc:j.loc,url:j.url,date:j.date,score:j.score,desc:(j.desc||'').slice(0,5000)}))})}catch(e){}
   $('feedStatus').textContent=status.join(' · ')+' — '+all.length+' jobs found';
   renderFeed();
   $('feedBtn').disabled=false;
 }
-function renderFeed(){
+function visibleFeed(){
   const min=+$('jf_min').value;
-  const list=feedJobs.filter(j=>j.score>=min);
+  let list=feedJobs.filter(j=>j.score>=min);
+  if($('jf_hide').checked){
+    const apps=store.get('apps',[]);
+    const keys=new Set(apps.map(a=>((a.role||'')+'|'+(a.company||'')).toLowerCase()));
+    list=list.filter(j=>!keys.has(((j.title||'')+'|'+(j.company||'')).toLowerCase()));
+  }
+  return list;
+}
+function renderFeed(){
+  const list=visibleFeed();
   $('feedList').innerHTML=list.length?list.map((j,i)=>
     '<div class="card" style="padding:14px 18px"><div class="row" style="justify-content:space-between">'
     +'<div style="flex:1;min-width:220px"><b>'+esc(j.title)+'</b><div class="small">'+esc(j.company)+' · '+esc(j.loc)+' · '+(j.date||'')+'</div></div>'
     +'<div class="row"><span class="status '+(j.score>=50?'s-interview':j.score>=30?'s-applied':'s-saved')+'">'+j.score+'% match</span>'
     +'<a class="btn ghost sm" href="'+j.url+'" target="_blank" rel="noopener">Open ↗</a>'
+    +'<button class="btn ghost sm" data-fsave="'+i+'">💾 Save</button>'
     +'<button class="btn sm" data-tailor="'+i+'">Tailor →</button></div></div></div>'
-  ).join(''):'<div class="card"><p class="small">Nothing above your match threshold. Lower it, broaden the search term, or add more skills to your Profile (the score compares job text against your profile).</p></div>';
+  ).join(''):'<div class="card"><p class="small">Nothing to show — lower the match threshold, broaden the search term, add more Profile skills, or untick "Hide jobs already in my Tracker".</p></div>';
   document.querySelectorAll('[data-tailor]').forEach(b=>b.onclick=()=>{
-    const cur=feedJobs.filter(j=>j.score>=+$('jf_min').value);
-    const j=cur[+b.dataset.tailor];if(!j)return;
-    $('g_company').value=j.company;$('g_role').value=j.title;$('g_jd').value=j.desc.slice(0,7000);
+    const j=visibleFeed()[+b.dataset.tailor];if(!j)return;
+    $('g_company').value=j.company;$('g_role').value=j.title;$('g_jd').value=(j.desc||'').slice(0,7000);
     document.querySelector('#nav button[data-v="generate"]').click();
     $('scoreBtn').click();
     window.scrollTo({top:0,behavior:'smooth'});
     toast('Loaded into Generate');
   });
+  document.querySelectorAll('[data-fsave]').forEach(b=>b.onclick=()=>{
+    const j=visibleFeed()[+b.dataset.fsave];if(!j)return;
+    const apps=store.get('apps',[]);
+    if(apps.some(a=>((a.role||'')+'|'+(a.company||'')).toLowerCase()===((j.title||'')+'|'+(j.company||'')).toLowerCase())){toast('Already in your Tracker');return}
+    apps.unshift({id:Date.now(),company:j.company||'',role:j.title||'',status:'saved',referral:'no',applied:'',followup:'',notes:j.url||'',jd:(j.desc||'').slice(0,5000),contacts:[],materials:[]});
+    store.set('apps',apps);toast('Saved to Tracker 💾');renderFeed();
+  });
 }
 $('feedBtn').onclick=fetchFeed;
 $('jf_min').onchange=renderFeed;
+$('jf_hide').onchange=renderFeed;
 function loadFeedCfg(){
   const s=store.get('settings',{});const a=s.adzuna||{};
   $('jf_country').value=a.country||'us';$('jf_where').value=a.where||'';$('jf_aid').value=a.id||'';$('jf_akey').value=a.key||'';
   const p=store.get('profile',{});if(p.title){$('jf_q').value=$('jf_q').value||p.title}
+  const fc=store.get('feedCache',null);
+  if(fc&&fc.jobs&&fc.jobs.length){
+    feedJobs=fc.jobs;
+    $('feedStatus').textContent='Restored '+fc.jobs.length+' jobs from last fetch ('+new Date(fc.ts).toLocaleString()+') — hit Fetch for fresh ones';
+    renderFeed();
+  }
 }
 
 /* ---------- SETTINGS ---------- */

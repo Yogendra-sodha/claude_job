@@ -38,7 +38,7 @@ cd "c:/Users/yuvis/OneDrive/Desktop/Weekend/claude_job" && node -e "const fs=req
       mailto: link generation with prefilled follow-up email subject/body.
 - [x] R6. Extension v1.1: fill cover-letter textareas from a stored "current cover letter"
       (extension popup textarea slot); more selectors (Workday data-automation-id patterns).
-- [ ] R7. Feed improvements: "hide jobs I've saved/applied" (match vs tracker), save-for-later button
+- [x] R7. Feed improvements: "hide jobs I've saved/applied" (match vs tracker), save-for-later button
       on feed cards (status=saved), remember last feed results in localStorage.
 - [ ] R8. Outreach follow-up nudges: contacts messaged >4 days ago with no reply → Today panel nudge.
 - [ ] R9. Onboarding polish: first-run checklist on Dashboard (profile → feed → generate → extension),
