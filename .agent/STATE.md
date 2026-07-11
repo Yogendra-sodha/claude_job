@@ -65,3 +65,4 @@ cd "c:/Users/yuvis/OneDrive/Desktop/Weekend/claude_job" && node -e "const fs=req
 - 2026-07-11 10:00 EDT — R4: printable ATS resume (Profile button → print/PDF window) — c164c4e
 - 2026-07-11 10:05 EDT — R5: follow-up helpers (✉ mailto draft, overdue red highlight, auto +7d) — a874e87
 - 2026-07-11 10:08 EDT — R6: extension v1.1 (cover-letter slot fills cover letter/why-us textareas) — 591ad7b
+- 2026-07-11 14:48 EDT — R7: feed improvements (hide already-tracked jobs toggle, 💾 Save on cards, cached results restored on load) — 93c4e5b
