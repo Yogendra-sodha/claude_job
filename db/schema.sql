@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   skills TEXT DEFAULT '',
   experience TEXT DEFAULT '',
   education TEXT DEFAULT '',
+  demographics TEXT DEFAULT '{}',
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 

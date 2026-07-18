@@ -96,5 +96,69 @@ function fillForm(p, letter) {
       if (val && re.test(desc)) { setVal(el, val); n++; break; }
     }
   }
+
+  // Handle demographics and checkboxes/radios
+  let d={}; try { d = typeof p.demographics === 'string' ? JSON.parse(p.demographics) : p.demographics||{}; } catch(e){}
+  const demoRules = [
+    [/gender|sex/i, d.gender],
+    [/race|ethni/i, d.race],
+    [/veteran/i, d.veteran],
+    [/disabil/i, d.disability],
+    [/18[\s_-]*years|older\b/i, d.age18],
+    [/contact[\s_-]*(current|past)[\s_-]*employ/i, d.contact_emp],
+    [/sponsor/i, d.sponsorship],
+    [/authori[sz]ed/i, d.authorized]
+  ];
+
+  const clickOption = (el) => {
+    if (el.checked) return false;
+    el.click();
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  };
+
+  const options = document.querySelectorAll('input[type="radio"], input[type="checkbox"]');
+  for (const el of options) {
+    if (el.disabled || el.readOnly) continue;
+    let qText = el.name || '';
+    const fieldset = el.closest('fieldset, .form-group, .application-question, .question-container, .section');
+    if (fieldset) qText += ' ' + fieldset.textContent;
+    else if (el.closest('label')?.parentElement) qText += ' ' + el.closest('label').parentElement.textContent;
+
+    let optText = el.value || '';
+    if (el.id) {
+      try {
+        const l = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]');
+        if (l) optText += ' ' + l.textContent;
+      } catch(e){}
+    }
+    const wrap = el.closest('label');
+    if (wrap) optText += ' ' + wrap.textContent;
+    
+    qText = qText.toLowerCase();
+    optText = optText.toLowerCase();
+
+    for (const [re, val] of demoRules) {
+      if (!val) continue;
+      if (re.test(qText)) {
+        const normVal = val.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const normOpt = optText.replace(/[^a-z0-9]/g, '');
+        
+        if ((val === 'Yes' && (normOpt === 'yes' || normOpt === 'true' || normOpt === 'y')) ||
+            (val === 'No' && (normOpt === 'no' || normOpt === 'false' || normOpt === 'n'))) {
+           if (clickOption(el)) n++;
+        } else if (normVal.includes('decline') && normOpt.includes('decline')) {
+           if (clickOption(el)) n++;
+        } else if (val === 'Male' && normOpt === 'male') {
+           if (clickOption(el)) n++;
+        } else if (val === 'Female' && normOpt === 'female') {
+           if (clickOption(el)) n++;
+        } else if (normOpt.length > 3 && (normVal.includes(normOpt) || normOpt.includes(normVal))) {
+           if (clickOption(el)) n++;
+        }
+      }
+    }
+  }
+
   return n;
 }

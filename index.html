@@ -170,6 +170,17 @@
       <div class="field"><label>Skills (comma separated — used for fit scoring)</label><textarea id="p_skills" placeholder="AutoCAD, SolidWorks, GD&T, project management, Python, ..."></textarea></div>
       <div class="field"><label>Work experience (paste bullet points / roles — the raw material AI tailors)</label><textarea id="p_experience" style="min-height:150px" placeholder="Company — Role (dates)&#10;• Achievement with numbers&#10;• Achievement with numbers"></textarea></div>
       <div class="field"><label>Education & certifications</label><textarea id="p_education"></textarea></div>
+      <h3 style="margin: 24px 0 12px; padding-top: 14px; border-top: 1px solid var(--line);">Demographics & Preferences (for Autofill)</h3>
+      <div class="grid2">
+        <div class="field"><label>Gender</label><select id="p_gender"><option value="">Select...</option><option>Male</option><option>Female</option><option>Decline to self-identify</option></select></div>
+        <div class="field"><label>Race / Ethnicity</label><select id="p_race"><option value="">Select...</option><option>Asian</option><option>Black or African American</option><option>Hispanic, Latino, or Spanish origin</option><option>Indigenous Peoples, First Nations, Native American, or Alaska Native</option><option>Native Hawaiian or Other Pacific Islander</option><option>White / Caucasian</option><option>Decline to self-identify</option></select></div>
+        <div class="field"><label>Veteran Status</label><select id="p_veteran"><option value="">Select...</option><option>I identify as one or more of the classifications of protected veteran</option><option>I am not a protected veteran</option><option>I decline to self-identify for protected veteran status</option></select></div>
+        <div class="field"><label>Disability Status</label><select id="p_disability"><option value="">Select...</option><option>Yes, I have a disability</option><option>No, I don't have a disability</option><option>I don't wish to answer</option></select></div>
+        <div class="field"><label>18 years of age or older?</label><select id="p_age18"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
+        <div class="field"><label>Contact current/past employers?</label><select id="p_contact_emp"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
+        <div class="field"><label>Require sponsorship for employment?</label><select id="p_sponsorship"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
+        <div class="field"><label>Legally authorized to work?</label><select id="p_authorized"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
+      </div>
       <div class="row">
         <button class="btn" id="saveProfile">Save profile</button>
         <button class="btn ghost" id="copyExt">Copy profile for Autofill extension</button>
@@ -378,9 +389,20 @@ function goTab(v){document.querySelector('#nav button[data-v="'+v+'"]').click();
 
 /* ---------- PROFILE ---------- */
 const PF=['name','title','email','phone','location','linkedin','portfolio','years','summary','skills','experience','education'];
-function loadProfile(){const p=store.get('profile',{});PF.forEach(k=>{if($('p_'+k))$('p_'+k).value=p[k]||''})}
+const DEMO_F=['gender','race','veteran','disability','age18','contact_emp','sponsorship','authorized'];
+function loadProfile(){
+  const p=store.get('profile',{});
+  PF.forEach(k=>{if($('p_'+k))$('p_'+k).value=p[k]||''});
+  let d={}; try { d = typeof p.demographics === 'string' ? JSON.parse(p.demographics) : p.demographics||{}; } catch(e){}
+  DEMO_F.forEach(k=>{if($('p_'+k))$('p_'+k).value=d[k]||''});
+}
 $('saveProfile').onclick=()=>{
-  const p={};PF.forEach(k=>p[k]=$('p_'+k).value.trim());store.set('profile',p);
+  const p={};
+  PF.forEach(k=>p[k]=$('p_'+k).value.trim());
+  const d={};
+  DEMO_F.forEach(k=>d[k]=$('p_'+k).value.trim());
+  p.demographics = JSON.stringify(d);
+  store.set('profile',p);
   $('profileSaved').textContent='✓ Saved '+new Date().toLocaleTimeString();toast('Profile saved');renderHome();
 };
 document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{
@@ -388,7 +410,8 @@ document.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>{
 });
 $('copyExt').onclick=()=>{
   const p=store.get('profile',{});
-  navigator.clipboard.writeText(JSON.stringify({fullName:p.name||'',email:p.email||'',phone:p.phone||'',location:p.location||'',linkedin:p.linkedin||'',portfolio:p.portfolio||'',years:p.years||'',summary:p.summary||''},null,2));
+  let d={}; try { d = typeof p.demographics === 'string' ? JSON.parse(p.demographics) : p.demographics||{}; } catch(e){}
+  navigator.clipboard.writeText(JSON.stringify({fullName:p.name||'',email:p.email||'',phone:p.phone||'',location:p.location||'',linkedin:p.linkedin||'',portfolio:p.portfolio||'',years:p.years||'',summary:p.summary||'',demographics:d},null,2));
   toast('Copied — paste into the extension popup');
 };
 $('printResume').onclick=()=>{

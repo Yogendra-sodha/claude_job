@@ -36,15 +36,15 @@ router.post('/import', async (req, res) => {
     if (data.profile) {
       const p = data.profile;
       const fields = ['name', 'title', 'email', 'phone', 'location', 'linkedin',
-                       'portfolio', 'years', 'summary', 'skills', 'experience', 'education'];
-      const values = fields.map(f => p[f] || '');
+                       'portfolio', 'years', 'summary', 'skills', 'experience', 'education', 'demographics'];
+      const values = fields.map(f => typeof p[f] === 'object' ? JSON.stringify(p[f]) : p[f] || '');
       await client.query(
-        `INSERT INTO profiles (id, name, title, email, phone, location, linkedin, portfolio, years, summary, skills, experience, education, updated_at)
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+        `INSERT INTO profiles (id, name, title, email, phone, location, linkedin, portfolio, years, summary, skills, experience, education, demographics, updated_at)
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
          ON CONFLICT (id) DO UPDATE SET
            name = $1, title = $2, email = $3, phone = $4, location = $5,
            linkedin = $6, portfolio = $7, years = $8, summary = $9,
-           skills = $10, experience = $11, education = $12, updated_at = NOW()`,
+           skills = $10, experience = $11, education = $12, demographics = $13, updated_at = NOW()`,
         values
       );
     }
@@ -119,7 +119,7 @@ router.delete('/wipe', async (req, res) => {
     await client.query('DELETE FROM materials');
     await client.query('DELETE FROM contacts');
     await client.query('DELETE FROM applications');
-    await client.query(`UPDATE profiles SET name='', title='', email='', phone='', location='', linkedin='', portfolio='', years='', summary='', skills='', experience='', education='' WHERE id = 1`);
+    await client.query(`UPDATE profiles SET name='', title='', email='', phone='', location='', linkedin='', portfolio='', years='', summary='', skills='', experience='', education='', demographics='{}' WHERE id = 1`);
     await client.query(`UPDATE settings SET mode='manual', api_key='', model='gpt-4o-mini', adzuna_country='us', adzuna_where='', adzuna_id='', adzuna_key='' WHERE id = 1`);
     await client.query('COMMIT');
     res.json({ wiped: true });
@@ -156,6 +156,7 @@ router.get('/extension', async (req, res) => {
         skills: profile.skills || '',
         experience: profile.experience || '',
         education: profile.education || '',
+        demographics: profile.demographics || '{}',
       },
       letter: latestLetter ? latestLetter.content : ''
     });
@@ -175,15 +176,15 @@ router.put('/sync', async (req, res) => {
     if (data.profile) {
       const p = data.profile;
       const fields = ['name', 'title', 'email', 'phone', 'location', 'linkedin',
-                       'portfolio', 'years', 'summary', 'skills', 'experience', 'education'];
-      const values = fields.map(f => p[f] || '');
+                       'portfolio', 'years', 'summary', 'skills', 'experience', 'education', 'demographics'];
+      const values = fields.map(f => typeof p[f] === 'object' ? JSON.stringify(p[f]) : p[f] || '');
       await client.query(
-        `INSERT INTO profiles (id, name, title, email, phone, location, linkedin, portfolio, years, summary, skills, experience, education, updated_at)
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+        `INSERT INTO profiles (id, name, title, email, phone, location, linkedin, portfolio, years, summary, skills, experience, education, demographics, updated_at)
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW())
          ON CONFLICT (id) DO UPDATE SET
            name = $1, title = $2, email = $3, phone = $4, location = $5,
            linkedin = $6, portfolio = $7, years = $8, summary = $9,
-           skills = $10, experience = $11, education = $12, updated_at = NOW()`,
+           skills = $10, experience = $11, education = $12, demographics = $13, updated_at = NOW()`,
         values
       );
     }
