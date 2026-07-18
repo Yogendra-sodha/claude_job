@@ -10,9 +10,15 @@ if (!document.getElementById('jf-floating-btn')) {
     e.stopPropagation();
     btn.classList.add('filling');
     try {
-      const res = await fetch('http://127.0.0.1:3000/api/data/extension');
-      if (!res.ok) throw new Error('JobFlow server not running');
-      const data = await res.json();
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({ action: 'fetchExtensionData' }, resolve);
+      });
+      
+      if (!response || !response.success) {
+        throw new Error(response ? response.error : 'No response from background script');
+      }
+      
+      const data = response.data;
       
       if (!data.profile || !data.profile.fullName) {
         alert('JobFlow: Profile is empty or backend is unavailable. Have you filled your profile in the app?');
