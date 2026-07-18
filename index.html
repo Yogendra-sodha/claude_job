@@ -170,8 +170,26 @@
       <div class="field"><label>Skills (comma separated — used for fit scoring)</label><textarea id="p_skills" placeholder="AutoCAD, SolidWorks, GD&T, project management, Python, ..."></textarea></div>
       <div class="field"><label>Work experience (paste bullet points / roles — the raw material AI tailors)</label><textarea id="p_experience" style="min-height:150px" placeholder="Company — Role (dates)&#10;• Achievement with numbers&#10;• Achievement with numbers"></textarea></div>
       <div class="field"><label>Education & certifications</label><textarea id="p_education"></textarea></div>
-      <h3 style="margin: 24px 0 12px; padding-top: 14px; border-top: 1px solid var(--line);">Demographics & Preferences (for Autofill)</h3>
+      <h3 style="margin: 24px 0 12px; padding-top: 14px; border-top: 1px solid var(--line);">Extended Profile & Demographics (for Autofill)</h3>
       <div class="grid2">
+        <div class="field"><label>Pronouns</label><input id="p_pronouns" placeholder="e.g. He/Him, She/Her, They/Them"></div>
+        <div class="field"><label>Address Line 1</label><input id="p_address1" placeholder="e.g. 123 Main St"></div>
+        <div class="field"><label>Address Line 2</label><input id="p_address2" placeholder="e.g. Apt 4B"></div>
+        <div class="field"><label>City</label><input id="p_city" placeholder="e.g. New York"></div>
+        <div class="field"><label>State / Province</label><input id="p_state" placeholder="e.g. NY"></div>
+        <div class="field"><label>Zip / Postal Code</label><input id="p_zip" placeholder="e.g. 10001"></div>
+        <div class="field"><label>Country</label><input id="p_country" placeholder="e.g. United States"></div>
+        <div class="field"><label>GitHub URL</label><input id="p_github" placeholder="https://github.com/..."></div>
+        <div class="field"><label>Personal Website</label><input id="p_website" placeholder="https://..."></div>
+        <div class="field"><label>Highest Education Level</label><select id="p_edu_level"><option value="">Select...</option><option>High School</option><option>Associate's Degree</option><option>Bachelor's Degree</option><option>Master's Degree</option><option>PhD / Doctorate</option></select></div>
+        <div class="field"><label>University / Institution</label><input id="p_university" placeholder="e.g. State University"></div>
+        <div class="field"><label>Degree Type</label><input id="p_degree" placeholder="e.g. B.S., B.A."></div>
+        <div class="field"><label>Major / Field of Study</label><input id="p_major" placeholder="e.g. Computer Science"></div>
+        <div class="field"><label>GPA</label><input id="p_gpa" placeholder="e.g. 3.8"></div>
+        <div class="field"><label>Expected Salary</label><input id="p_salary" placeholder="e.g. $100,000"></div>
+        <div class="field"><label>Notice Period / Start Date</label><input id="p_notice" placeholder="e.g. 2 weeks, Immediately"></div>
+        <div class="field"><label>How did you hear about this job?</label><input id="p_source" placeholder="e.g. LinkedIn, Company Website"></div>
+        
         <div class="field"><label>Gender</label><select id="p_gender"><option value="">Select...</option><option>Male</option><option>Female</option><option>Decline to self-identify</option></select></div>
         <div class="field"><label>Race / Ethnicity</label><select id="p_race"><option value="">Select...</option><option>Asian</option><option>Black or African American</option><option>Hispanic, Latino, or Spanish origin</option><option>Indigenous Peoples, First Nations, Native American, or Alaska Native</option><option>Native Hawaiian or Other Pacific Islander</option><option>White / Caucasian</option><option>Decline to self-identify</option></select></div>
         <div class="field"><label>Veteran Status</label><select id="p_veteran"><option value="">Select...</option><option>I identify as one or more of the classifications of protected veteran</option><option>I am not a protected veteran</option><option>I decline to self-identify for protected veteran status</option></select></div>
@@ -180,6 +198,9 @@
         <div class="field"><label>Contact current/past employers?</label><select id="p_contact_emp"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
         <div class="field"><label>Require sponsorship for employment?</label><select id="p_sponsorship"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
         <div class="field"><label>Legally authorized to work?</label><select id="p_authorized"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
+        <div class="field"><label>Willing to relocate?</label><select id="p_relocate"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
+        <div class="field"><label>Employed by us before?</label><select id="p_prev_emp"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
+        <div class="field"><label>Subject to non-compete?</label><select id="p_noncompete"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
       </div>
       <div class="row">
         <button class="btn" id="saveProfile">Save profile</button>
@@ -389,7 +410,7 @@ function goTab(v){document.querySelector('#nav button[data-v="'+v+'"]').click();
 
 /* ---------- PROFILE ---------- */
 const PF=['name','title','email','phone','location','linkedin','portfolio','years','summary','skills','experience','education'];
-const DEMO_F=['gender','race','veteran','disability','age18','contact_emp','sponsorship','authorized'];
+const DEMO_F=['gender','race','veteran','disability','age18','contact_emp','sponsorship','authorized','pronouns','address1','address2','city','state','zip','country','github','website','edu_level','university','degree','major','gpa','salary','notice','source','relocate','prev_emp','noncompete'];
 function loadProfile(){
   const p=store.get('profile',{});
   PF.forEach(k=>{if($('p_'+k))$('p_'+k).value=p[k]||''});

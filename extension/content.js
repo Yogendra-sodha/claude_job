@@ -48,17 +48,35 @@ function fillForm(p, letter) {
   const parts = (p.fullName || '').trim().split(/\s+/);
   const first = parts[0] || '';
   const last = parts.slice(1).join(' ') || '';
+  let d={}; try { d = typeof p.demographics === 'string' ? JSON.parse(p.demographics) : p.demographics||{}; } catch(e){}
+  
   const rules = [
     [/first[\s_-]*name|given[\s_-]*name|\bfname\b/i, first],
     [/last[\s_-]*name|family[\s_-]*name|surname|\blname\b/i, last],
+    [/full[\s_-]*name|your[\s_-]*name|candidate[\s_-]*name|legal[\s_-]*name|\bname\b/i, p.fullName],
     [/e[\s_-]*mail/i, p.email],
     [/phone|mobile|contact[\s_-]*number|\btel\b/i, p.phone],
+    [/pronoun/i, d.pronouns],
+    [/address[\s_-]*line[\s_-]*1|street[\s_-]*address\b/i, d.address1],
+    [/address[\s_-]*line[\s_-]*2|apt|suite|unit/i, d.address2],
+    [/\bcity\b/i, d.city],
+    [/\bstate\b|province/i, d.state],
+    [/\bzip\b|postal/i, d.zip],
+    [/\bcountry\b/i, d.country],
+    [/\blocation\b|address/i, p.location],
     [/linked[\s_-]*in/i, p.linkedin],
-    [/github|portfolio|personal[\s_-]*(web)?site|\bwebsite\b/i, p.portfolio],
+    [/github/i, d.github],
+    [/website|portfolio|personal[\s_-]*site/i, d.website || p.portfolio],
     [/current[\s_-]*(company|employer)|\bemployer\b/i, p.company || ''],
-    [/\bcity\b|location|address/i, p.location],
     [/years?[\s_-]*(of[\s_-]*)?experience/i, p.years],
-    [/full[\s_-]*name|your[\s_-]*name|candidate[\s_-]*name|legal[\s_-]*name|\bname\b/i, p.fullName],
+    [/highest.*education|degree[\s_-]*level/i, d.edu_level],
+    [/university|college|institution|school/i, d.university],
+    [/major|field[\s_-]*of[\s_-]*study/i, d.major],
+    [/degree/i, d.degree],
+    [/\bgpa\b|grade[\s_-]*point/i, d.gpa],
+    [/salary|compensation/i, d.salary],
+    [/notice[\s_-]*period|start[\s_-]*date|available/i, d.notice],
+    [/how[\s_-]*did[\s_-]*you[\s_-]*hear|source/i, d.source],
     [/\bsummary\b|about[\s_-]*(you|yourself|me)/i, p.summary || '']
   ];
   
@@ -97,8 +115,6 @@ function fillForm(p, letter) {
     }
   }
 
-  // Handle demographics and checkboxes/radios
-  let d={}; try { d = typeof p.demographics === 'string' ? JSON.parse(p.demographics) : p.demographics||{}; } catch(e){}
   const demoRules = [
     [/gender|sex/i, d.gender],
     [/race|ethni/i, d.race],
@@ -107,7 +123,10 @@ function fillForm(p, letter) {
     [/18[\s_-]*years|older\b/i, d.age18],
     [/contact[\s_-]*(current|past)[\s_-]*employ/i, d.contact_emp],
     [/sponsor/i, d.sponsorship],
-    [/authori[sz]ed/i, d.authorized]
+    [/authori[sz]ed/i, d.authorized],
+    [/relocat/i, d.relocate],
+    [/previously[\s_-]*employed|worked[\s_-]*here/i, d.prev_emp],
+    [/non[\s_-]*compete|confidentiality/i, d.noncompete]
   ];
 
   const clickOption = (el) => {
