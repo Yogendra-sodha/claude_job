@@ -31,11 +31,11 @@ Upgrade JobFlow from a static file://index.html app to a full-stack local applic
 - [x] Phase 5: Migrate index.html from localStorage → API calls
 - [x] Phase 6: Extension v2 (floating button, API-backed, content script)
 - [x] Phase 7: Desktop shortcut + auto-start script
-- [ ] Phase 8: Testing + QA pass
-- [ ] Phase 9: Final commit + push + README update
+- [x] Phase 8: Testing + QA pass
+- [x] Phase 9: Final commit + push + README update
 
-## Current Phase: Phase 8 — Testing + QA pass
-## Last Burst: 2026-07-18 13:45 EDT — Startup scripts created
+## Current Phase: Phase 9 — Completed
+## Last Burst: 2026-07-18 13:48 EDT — Completed persistence upgrade!
 
 ## Environment
 - PostgreSQL 18 running as service `postgresql-x64-18`
