@@ -1,0 +1,21 @@
+{
+  "name": "jobflow",
+  "version": "2.0.0",
+  "description": "JobFlow — AI Job Application Cockpit with PostgreSQL persistence",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "db:init": "node db/init.js",
+    "setup": "npm install && node db/init.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0",
+    "pg": "^8.16.0"
+  },
+  "author": "Yogendra Sodha",
+  "license": "MIT",
+  "private": true
+}

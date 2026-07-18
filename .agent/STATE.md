@@ -1,76 +1,49 @@
 # JobFlow — Autonomous Work State
 
-## Mission
-Make JobFlow the fastest path through the user's real job-application journey:
-**find jobs → check fit → tailor resume/cover letter → apply (autofill) → find people at company → ask referral → track → follow up.**
-User (Yogendra) is away; work autonomously. He will NOT answer questions — make sensible decisions alone.
+## Current Mission
+Upgrade JobFlow from a static file://index.html app to a full-stack local application:
+- **Node.js + Express backend** serving the app at http://localhost:3000
+- **PostgreSQL database** for true data persistence (profile, apps, contacts, materials, settings)
+- **Chrome extension v2** that fetches profile from the local API (no copy/paste), injects a floating autofill button on job pages, fills profile + cover letter + work history
+- **Desktop shortcut** (`start-jobflow.bat`) that auto-starts server + opens browser
 
-## Hard rules
-- STOP TIME: **2026-07-11 15:00 EDT (TODAY)**. Wrap-up cron fires 14:57 (job 9b732738).
-- Schedule: recurring cron 477818b2 fires hourly at :23 in THIS session (session-only —
-  VS Code window must stay open). Each firing = one burst.
-- LESSON (user was rightly angry): a turn can be killed mid-work by the usage cap with no retry.
-  Therefore: safety net FIRST. At every burst start: git status → if uncommitted changes exist,
-  validate + commit + push them BEFORE starting anything new. Keep bursts small (~15 tool calls).
-- EVERY burst: implement → validate JS parses (node) → `git add -A && git commit && git push`.
-- Never break the app: validate before commit. index.html must stay a single self-contained file.
-- No auto-apply bots / scraping (ToS risk). No external services that receive his data.
-- Commit messages: short imperative + Co-Authored-By Claude line.
-- NEVER mark backlog items done or write Done-log entries before the commit actually exists.
-- Playwright MCP tools are now available (mcp__playwright__*, load via ToolSearch) — use for the
-  R11 QA pass: browser_navigate to the file, click every tab, check console_messages for errors.
+## Approved Design
+- Approach A: Node.js backend + PostgreSQL + Extension talks to local API
+- User wants: floating button (not auto-fill), fills profile + cover letter + work history
+- PostgreSQL: use default `postgres` user, user knows their password
+- Commit + push at every step
+- Autonomous work: save state, schedule resumption after usage limits
 
-## Validate command
-cd "c:/Users/yuvis/OneDrive/Desktop/Weekend/claude_job" && node -e "const fs=require('fs');const m=fs.readFileSync('index.html','utf8').match(/<script>([\s\S]*?)<\/script>/);try{new Function(m[1]);console.log('OK')}catch(e){console.log('FAIL',e.message)}"
+## Hard Rules
+- Commit + push after every meaningful step
+- Update this STATE.md after every burst so context survives model changes
+- Never break the app: validate before commit
+- Keep bursts small (~15 tool calls) to avoid cap kills
+- PostgreSQL 18 at: C:\Program Files\PostgreSQL\18\bin\
+- Node.js v24.13.1, npm 11.8.0
+- Remote: https://github.com/Yogendra-sodha/claude_job.git branch master
 
-## Backlog (priority order — pick top unchecked item each burst)
-- [x] R1. Referral flow: Referrals tab — per-application people-finder links (LinkedIn people search:
-      recruiters / hiring managers / teammates + Google X-ray), contact list per application with
-      status (to-message/messaged/replied/referred/declined), ✉ Message button prefills Generate
-      with contact name + stored JD. saveGen stores jd. Generate gets optional "contact name" field.
-- [x] R2. Dashboard "Today's actions" panel: follow-ups due, applied-but-no-referral-ask nudges,
-      contacts still in "to-message". Each with a jump button.
-- [x] R3. Materials library: saveGen also saves the generated text; Tracker row expand (📄) shows saved
-      cover letter/messages per application so nothing is lost; copy buttons.
-- [x] R4. Resume builder/export: printable tailored-resume page (profile + tailored bullets pasted in),
-      opens print dialog → save as PDF. ATS-clean single-column format.
-- [x] R5. Follow-up automation aids: when status→applied, auto-suggest followup date (+7d);
-      mailto: link generation with prefilled follow-up email subject/body.
-- [x] R6. Extension v1.1: fill cover-letter textareas from a stored "current cover letter"
-      (extension popup textarea slot); more selectors (Workday data-automation-id patterns).
-- [x] R7. Feed improvements: "hide jobs I've saved/applied" (match vs tracker), save-for-later button
-      on feed cards (status=saved), remember last feed results in localStorage.
-- [ ] R8. Outreach follow-up nudges: contacts messaged >4 days ago with no reply → Today panel nudge.
-- [ ] R9. Onboarding polish: first-run checklist on Dashboard (profile → feed → generate → extension),
-      each step checks off automatically.
-- [ ] R10. README.md for repo: what this is, how to use.
-- [ ] R11. QA pass: code-review every handler for dead references/bugs, fix what's found.
-- [ ] R12. Interview-prep generator: paste JD → likely interview questions + STAR answer skeletons
-      from profile (new Generate tab kind).
-- [ ] R13. Salary-negotiation message kind in Generate.
+## Progress Tracker
+- [ ] Phase 1: Write design spec → `docs/superpowers/specs/2026-07-18-persistence-upgrade-design.md`
+- [ ] Phase 2: Write implementation plan → `docs/superpowers/plans/2026-07-18-persistence-upgrade.md`
+- [ ] Phase 3: Backend scaffolding (package.json, server.js, db.js, schema.sql)
+- [ ] Phase 4: API routes (profile, apps, contacts, materials, settings)
+- [ ] Phase 5: Migrate index.html from localStorage → API calls
+- [ ] Phase 6: Extension v2 (floating button, API-backed, content script)
+- [ ] Phase 7: Desktop shortcut + auto-start script
+- [ ] Phase 8: Testing + QA pass
+- [ ] Phase 9: Final commit + push + README update
 
-## Done log (append one line per burst AFTER the commit exists: date/time UTC — what shipped — commit)
-- 2026-07-11 — v1: cockpit app (profile/find/generate/tracker/settings), fit score, free+API modes; v2: Job Feed + Autofill extension — 23f0bd7 (committed by user)
-- 2026-07-11 09:35 EDT — R1+R2: Referrals tab (people links, contacts, ✉ prefill), Today panel, jd stored on save, contact-name personalization — 5c9db8b
+## Current Phase: Phase 1 — Writing design spec
+## Last Burst: 2026-07-18 13:27 EDT — Starting autonomous session
 
-## Notes / decisions
-- Remote: https://github.com/Yogendra-sodha/claude_job.git branch master. Push verified working.
-- gh CLI not installed — plain git only.
-- Free APIs verified live w/ CORS: remotive.com/api, arbeitnow.com/api, remoteok.com/api.
-- Adzuna optional (user must get free key) — UI already in Job Feed tab.
-- User's OpenAI key mode already supported; default is free/manual prompt-copy mode.
+## Environment
+- PostgreSQL 18 running as service `postgresql-x64-18`
+- psql at: C:\Program Files\PostgreSQL\18\bin\psql.exe
+- Node v24.13.1, npm 11.8.0
+- Git remote verified working
 
-## Done log additions
-- 2026-07-11 09:55 EDT — R3: materials library (auto-attach generated text to app, 📄 Tracker expander, dedupe saveGen) — 22e3693
-- 2026-07-11 10:00 EDT — R4: printable ATS resume (Profile button → print/PDF window) — c164c4e
-- 2026-07-11 10:05 EDT — R5: follow-up helpers (✉ mailto draft, overdue red highlight, auto +7d) — a874e87
-- 2026-07-11 10:08 EDT — R6: extension v1.1 (cover-letter slot fills cover letter/why-us textareas) — 591ad7b
-- 2026-07-11 14:48 EDT — R7: feed improvements (hide already-tracked jobs toggle, 💾 Save on cards, cached results restored on load) — 93c4e5b
-
-## SESSION COMPLETE — 2026-07-11 14:57 EDT
-Autonomous run finished at deadline. R1–R7 shipped (7 of 13 backlog items). All work committed
-and pushed to origin/master; app JS validated on every commit. Cron jobs deleted (477818b2 recurring,
-9b732738 one-shot fired for this wrap-up). Remaining backlog for a future session: R8–R13
-(outreach nudges, onboarding checklist, README, QA pass with Playwright, interview prep,
-salary negotiation kind). Mid-day bursts 10:23–13:23 were blocked by the usage cap — only the
-14:23 firing got through; that is expected behavior, not a bug.
+## Notes
+- User wants Jobright-like experience: seamless, one-click, no manual data transfer
+- User will be away — work autonomously, make sensible decisions
+- Original backlog items R8-R13 are paused; this persistence upgrade takes priority

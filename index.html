@@ -351,9 +351,17 @@
 
 <script>
 const $=id=>document.getElementById(id);
+let appState = { profile: {}, apps: [], settings: {mode:'manual'} };
 const store={
-  get:(k,d)=>{try{return JSON.parse(localStorage.getItem('jf_'+k))??d}catch(e){return d}},
-  set:(k,v)=>localStorage.setItem('jf_'+k,JSON.stringify(v))
+  get:(k,d)=>{
+    if(k==='feedCache'){try{return JSON.parse(localStorage.getItem('jf_'+k))??d}catch(e){return d}}
+    return appState[k] !== undefined && (Array.isArray(appState[k]) ? true : Object.keys(appState[k]||{}).length > 0) ? appState[k] : d;
+  },
+  set:(k,v)=>{
+    appState[k]=v;
+    if(k==='feedCache'){localStorage.setItem('jf_'+k,JSON.stringify(v));return}
+    fetch('http://localhost:3000/api/data/sync',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:appState.profile,apps:appState.apps,settings:appState.settings})}).catch(e=>console.error('Sync error',e));
+  }
 };
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),1800)}
 
@@ -832,10 +840,44 @@ function dl(name,content,type){const b=new Blob([content],{type});const u=URL.cr
 $('exportAll').onclick=()=>dl('jobflow-backup.json',JSON.stringify({profile:store.get('profile',{}),apps:store.get('apps',[]),settings:store.get('settings',{})},null,2),'application/json');
 $('importAll').onclick=()=>$('importFile').click();
 $('importFile').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(d.profile)store.set('profile',d.profile);if(d.apps)store.set('apps',d.apps);if(d.settings)store.set('settings',d.settings);loadProfile();loadSettings();renderHome();toast('Data imported')}catch(err){toast('Invalid file')}};r.readAsText(f)};
-$('wipeAll').onclick=()=>{if(confirm('Erase ALL data on this device? This cannot be undone.')){['profile','apps','settings'].forEach(k=>localStorage.removeItem('jf_'+k));loadProfile();loadSettings();renderTracker();renderHome();toast('Erased')}};
+$('wipeAll').onclick=()=>{if(confirm('Erase ALL data on this device? This cannot be undone.')){appState={profile:{},apps:[],settings:{mode:'manual'}};fetch('http://localhost:3000/api/data/wipe',{method:'DELETE'}).then(()=>{loadProfile();loadSettings();renderTracker();renderHome();toast('Erased')})}};
 
 /* ---------- INIT ---------- */
-loadProfile();loadSettings();loadFeedCfg();renderHome();renderToday();genModeLabel();
+async function initApp(){
+  let usingBackend = false;
+  try{
+    const r=await fetch('http://localhost:3000/api/data/export');
+    if(r.ok){
+      const d=await r.json();
+      appState.profile=d.profile||{};
+      appState.apps=d.apps||[];
+      appState.settings=d.settings||{mode:'manual'};
+      usingBackend = true;
+    }
+  }catch(e){
+    console.warn('Backend offline, using localStorage');
+  }
+  
+  const localApps = JSON.parse(localStorage.getItem('jf_apps'))||[];
+  const localProfile = JSON.parse(localStorage.getItem('jf_profile'))||{};
+  
+  if(usingBackend && appState.apps.length === 0 && Object.keys(appState.profile).length === 0 && (localApps.length > 0 || Object.keys(localProfile).length > 0)) {
+    if(confirm('Found existing JobFlow data in your browser. Do you want to migrate it to the new PostgreSQL database?')) {
+      appState.apps = localApps;
+      appState.profile = localProfile;
+      appState.settings = JSON.parse(localStorage.getItem('jf_settings'))||{mode:'manual'};
+      await fetch('http://localhost:3000/api/data/sync',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({profile:appState.profile,apps:appState.apps,settings:appState.settings})});
+      toast('Data migrated to Postgres!');
+    }
+  } else if (!usingBackend) {
+    appState.apps = localApps;
+    appState.profile = localProfile;
+    appState.settings = JSON.parse(localStorage.getItem('jf_settings'))||{mode:'manual'};
+  }
+  
+  loadProfile();loadSettings();loadFeedCfg();renderHome();renderToday();genModeLabel();
+}
+initApp();
 </script>
 </body>
 </html>
