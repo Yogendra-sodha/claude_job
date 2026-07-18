@@ -24,18 +24,18 @@ Upgrade JobFlow from a static file://index.html app to a full-stack local applic
 - Remote: https://github.com/Yogendra-sodha/claude_job.git branch master
 
 ## Progress Tracker
-- [ ] Phase 1: Write design spec → `docs/superpowers/specs/2026-07-18-persistence-upgrade-design.md`
-- [ ] Phase 2: Write implementation plan → `docs/superpowers/plans/2026-07-18-persistence-upgrade.md`
-- [ ] Phase 3: Backend scaffolding (package.json, server.js, db.js, schema.sql)
-- [ ] Phase 4: API routes (profile, apps, contacts, materials, settings)
-- [ ] Phase 5: Migrate index.html from localStorage → API calls
-- [ ] Phase 6: Extension v2 (floating button, API-backed, content script)
+- [x] Phase 1: Write design spec → `docs/superpowers/specs/2026-07-18-persistence-upgrade-design.md`
+- [x] Phase 2: Write implementation plan → `docs/superpowers/plans/2026-07-18-persistence-upgrade.md`
+- [x] Phase 3: Backend scaffolding (package.json, server.js, db.js, schema.sql)
+- [x] Phase 4: API routes (profile, apps, contacts, materials, settings)
+- [x] Phase 5: Migrate index.html from localStorage → API calls
+- [x] Phase 6: Extension v2 (floating button, API-backed, content script)
 - [ ] Phase 7: Desktop shortcut + auto-start script
 - [ ] Phase 8: Testing + QA pass
 - [ ] Phase 9: Final commit + push + README update
 
-## Current Phase: Phase 1 — Writing design spec
-## Last Burst: 2026-07-18 13:27 EDT — Starting autonomous session
+## Current Phase: Phase 7 — Desktop shortcut + auto-start script
+## Last Burst: 2026-07-18 13:42 EDT — Completed Extension v2
 
 ## Environment
 - PostgreSQL 18 running as service `postgresql-x64-18`

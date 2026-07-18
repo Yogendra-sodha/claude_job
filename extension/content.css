@@ -1,0 +1,35 @@
+#jf-floating-btn {
+  position: fixed !important;
+  bottom: 20px !important;
+  right: 20px !important;
+  background: linear-gradient(135deg, #6d8bff, #8b7dff) !important;
+  color: #fff !important;
+  border: none !important;
+  border-radius: 50% !important;
+  width: 50px !important;
+  height: 50px !important;
+  font-size: 24px !important;
+  cursor: pointer !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+  z-index: 2147483647 !important; /* Max z-index */
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: transform 0.2s !important;
+  padding: 0 !important;
+  line-height: 1 !important;
+  user-select: none !important;
+}
+#jf-floating-btn:hover {
+  transform: scale(1.1) !important;
+}
+#jf-floating-btn:active {
+  transform: scale(0.95) !important;
+}
+#jf-floating-btn.filling {
+  animation: jf-spin 1s infinite linear !important;
+}
+@keyframes jf-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
