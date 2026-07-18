@@ -11,8 +11,6 @@ if not exist "node_modules\" (
 )
 
 echo [INFO] Starting JobFlow server...
-start /b node server.js
-
 echo [INFO] Waiting for server to start...
 timeout /t 2 /nobreak >nul
 

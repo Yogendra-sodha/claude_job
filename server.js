@@ -49,9 +49,11 @@ app.get('/api/health', (req, res) => {
 });
 
 // Fallback: serve index.html for any non-API route
-app.get('*', (req, res) => {
-  if (!req.path.startsWith('/api')) {
+app.use((req, res, next) => {
+  if (req.method === 'GET' && !req.path.startsWith('/api')) {
     res.sendFile(path.join(__dirname, 'index.html'));
+  } else {
+    next();
   }
 });
 
