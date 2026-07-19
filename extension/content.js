@@ -34,6 +34,9 @@ function jfFlash(msg, color) {
   f._t = setTimeout(() => { f.style.opacity = '0'; }, 5000);
 }
 
+// Identifies this frame so a fill-broadcast doesn't double-run in its originator
+const JF_NONCE = Math.random().toString(36).slice(2) + Date.now();
+
 // ---- Cached profile so we fetch once, then reuse for auto-fill + manual ----
 let JF_DATA = null;
 async function jfGetData() {
@@ -79,7 +82,10 @@ async function jfRun(manual) {
       jfFlash((manual ? 'Filled ' : 'Auto-filled ') + n + ' field' + (n > 1 ? 's' : '') + ' (green). Review before submitting.', '#3ecf8e');
     } else if (manual) {
       jfSetBtn('∅', true);
-      jfFlash('No empty fields found here. If the form is in another section/popup, open it and click ⚡ again.', '#f59e0b');
+      const hasIframes = document.querySelectorAll('iframe').length > 0;
+      jfFlash(hasIframes
+        ? 'This part of the page has no form — it lives in an embedded frame, which I also asked to fill. If nothing turned green, open a specific job and click Apply first, then look again.'
+        : 'No empty fields found. If this is a job list page, open a job and click Apply first — then the form will fill.', '#f59e0b');
     }
     return n;
   } catch (err) {
@@ -107,8 +113,23 @@ try {
     jfBtn.textContent = '⚡';
     jfBtn.title = 'JobFlow Autofill — click to fill this form (auto-fills on load too)';
     document.body.appendChild(jfBtn);
-    jfBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); jfRun(true); });
+    jfBtn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      jfRun(true);
+      // Also trigger the fill in every other frame of this tab (Greenhouse
+      // embeds and many ATS pages keep the real form inside an iframe).
+      try { chrome.runtime.sendMessage({ action: 'fillAllFrames', nonce: JF_NONCE }); } catch (err) {}
+    });
   }
+
+  // Receive fill broadcasts initiated from another frame's ⚡ button
+  try {
+    chrome.runtime.onMessage.addListener((msg) => {
+      if (msg && msg.action === 'jf-fill' && msg.nonce !== JF_NONCE) {
+        if (jfLooksLikeForm()) jfRun(true);
+      }
+    });
+  } catch (err) {}
 
   // ---- AUTO-FILL: on load, and again whenever a new step/modal renders ----
   let autoTimer = null;
