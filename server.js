@@ -14,20 +14,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(express.json({ limit: '5mb' }));
-app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (same-origin, curl, etc.)
-    if (!origin) return callback(null, true);
-    // Allow chrome extensions and localhost
-    if (origin.startsWith('chrome-extension://') ||
-        origin.startsWith('http://localhost') ||
-        origin.startsWith('http://127.0.0.1')) {
-      return callback(null, true);
-    }
-    callback(new Error('Not allowed by CORS'));
-  },
-  credentials: true
-}));
+app.use(cors());
 
 // Serve static files (index.html, etc.)
 app.use(express.static(path.join(__dirname), {

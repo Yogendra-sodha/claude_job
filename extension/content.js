@@ -1,3 +1,8 @@
+// JobFlow Autofill — Content Script
+// Fetches profile data DIRECTLY from localhost (no background script needed)
+
+const JF_API = 'http://127.0.0.1:3000/api/data/extension';
+
 if (!document.getElementById('jf-floating-btn')) {
   const btn = document.createElement('button');
   btn.id = 'jf-floating-btn';
@@ -9,50 +14,47 @@ if (!document.getElementById('jf-floating-btn')) {
     e.preventDefault();
     e.stopPropagation();
     btn.classList.add('filling');
+    btn.textContent = '\u23F3';
+
     try {
-      const response = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({ action: 'fetchExtensionData' }, (resp) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(resp);
-          }
-        });
-      });
-      
-      if (!response || !response.success) {
-        throw new Error(response ? response.error : 'No response from background script');
-      }
-      
-      const data = response.data;
-      console.log('[JobFlow] Received data from server:', JSON.stringify(data).substring(0, 500));
-      
+      // Direct fetch — no background script dependency
+      const res = await fetch(JF_API);
+      if (!res.ok) throw new Error('Server returned ' + res.status);
+      const data = await res.json();
+
+      console.log('[JobFlow] Data received, profile:', data.profile?.fullName);
+
       if (!data.profile || !data.profile.fullName) {
-        alert('JobFlow: Profile is empty or backend is unavailable.\n\n1. Make sure JobFlow is running (start-jobflow.bat)\n2. Fill your profile at http://localhost:3000\n3. Click Save profile');
+        alert('JobFlow: Profile is empty.\n\n1. Open http://localhost:3000\n2. Go to My Profile tab\n3. Fill your info and click Save');
+        btn.textContent = '\u26A1';
         return;
       }
-      
+
       const n = fillForm(data.profile, data.letter || '');
       console.log('[JobFlow] Filled', n, 'fields');
-      btn.textContent = n > 0 ? '\u2705' : '0';
-      setTimeout(() => btn.textContent = '\u26A1', 2500);
-    } catch (e) {
-      console.error('[JobFlow] Error:', e);
-      alert('JobFlow: Could not connect to local server.\n\nMake sure JobFlow is running on localhost:3000.\nError: ' + e.message);
+      btn.textContent = n > 0 ? ('\u2705 ' + n) : '0';
+      setTimeout(() => { btn.textContent = '\u26A1'; }, 3000);
+
+    } catch (err) {
+      console.error('[JobFlow] Error:', err);
       btn.textContent = '\u274C';
-      setTimeout(() => btn.textContent = '\u26A1', 2500);
+      alert('JobFlow: Cannot reach server.\n\nRun start-jobflow.bat or:\n  cd claude_job && npm start\n\nError: ' + err.message);
+      setTimeout(() => { btn.textContent = '\u26A1'; }, 3000);
     } finally {
       btn.classList.remove('filling');
     }
   });
 }
 
+// =============================================
+// MAIN FILL LOGIC
+// =============================================
 function fillForm(p, letter) {
   const parts = (p.fullName || '').trim().split(/\s+/);
   const first = parts[0] || '';
   const last = parts.slice(1).join(' ') || '';
 
-  // Parse demographics - handle both string and object
+  // Parse demographics
   let d = {};
   try {
     if (typeof p.demographics === 'string' && p.demographics.length > 2) {
@@ -60,32 +62,29 @@ function fillForm(p, letter) {
     } else if (typeof p.demographics === 'object' && p.demographics !== null) {
       d = p.demographics;
     }
-  } catch (e) {
-    console.warn('[JobFlow] Failed to parse demographics:', e);
-  }
-  console.log('[JobFlow] Demographics parsed:', JSON.stringify(d));
+  } catch (e) { console.warn('[JobFlow] demographics parse error', e); }
 
-  // =============================================
-  // TEXT INPUT RULES (order matters — more specific first)
-  // =============================================
+  console.log('[JobFlow] Demographics keys:', Object.keys(d).filter(k => d[k]).join(', '));
+
+  // ---- TEXT INPUT RULES (specific first, general last) ----
   const rules = [
     [/first[\s_-]*name|given[\s_-]*name|\bfname\b/i, first],
     [/last[\s_-]*name|family[\s_-]*name|surname|\blname\b/i, last],
-    [/full[\s_-]*name|your[\s_-]*name|candidate[\s_-]*name|legal[\s_-]*name|\bname\b/i, p.fullName],
+    [/full[\s_-]*name|your[\s_-]*name|candidate[\s_-]*name|legal[\s_-]*name/i, p.fullName],
     [/e[\s_-]*mail/i, p.email],
-    [/phone|mobile|contact[\s_-]*number|\btel\b/i, p.phone],
+    [/phone|mobile|cell|contact[\s_-]*number|\btel\b/i, p.phone],
     [/pronoun/i, d.pronouns || ''],
-    [/address[\s_-]*line[\s_-]*2|apt|suite|unit/i, d.address2 || ''],
-    [/address[\s_-]*line[\s_-]*1|street[\s_-]*address\b/i, d.address1 || ''],
+    [/address[\s_-]*line[\s_-]*2|apt|suite|unit\b/i, d.address2 || ''],
+    [/address[\s_-]*line[\s_-]*1|street[\s_-]*address/i, d.address1 || ''],
     [/\bcity\b/i, d.city || ''],
     [/\bstate\b|province/i, d.state || ''],
     [/\bzip\b|postal/i, d.zip || ''],
     [/\bcountry\b/i, d.country || ''],
-    [/\blocation\b|address/i, p.location],
+    [/\blocation\b/i, p.location],
     [/linked[\s_-]*in/i, p.linkedin],
-    [/github/i, d.github || p.portfolio || ''],
+    [/\bgithub\b/i, d.github || p.portfolio || ''],
     [/website|portfolio|personal[\s_-]*site/i, d.website || p.portfolio || ''],
-    [/current[\s_-]*(company|employer)|\bemployer\b/i, p.company || ''],
+    [/current[\s_-]*(company|employer)|\bemployer\b/i, ''],
     [/years?[\s_-]*(of[\s_-]*)?experience/i, p.years],
     [/highest.*education|education[\s_-]*level|degree[\s_-]*level/i, d.edu_level || ''],
     [/university|college|institution|school[\s_-]*name/i, d.university || ''],
@@ -93,211 +92,135 @@ function fillForm(p, letter) {
     [/\bdegree\b/i, d.degree || ''],
     [/\bgpa\b|grade[\s_-]*point/i, d.gpa || ''],
     [/salary|compensation|desired[\s_-]*pay/i, d.salary || ''],
-    [/notice[\s_-]*period|start[\s_-]*date|earliest[\s_-]*(start|available)|when[\s_-]*can[\s_-]*you[\s_-]*start|available/i, d.notice || ''],
-    [/how[\s_-]*did[\s_-]*you[\s_-]*(hear|find|learn)|referral[\s_-]*source|source/i, d.source || ''],
+    [/notice[\s_-]*period|start[\s_-]*date|earliest|when[\s_-]*can[\s_-]*you[\s_-]*start|available[\s_-]*to[\s_-]*start/i, d.notice || ''],
+    [/how[\s_-]*did[\s_-]*you[\s_-]*(hear|find|learn)|referral[\s_-]*source|\bsource\b/i, d.source || ''],
     [/\bsummary\b|about[\s_-]*(you|yourself|me)/i, p.summary || ''],
     [/\btitle\b|current[\s_-]*title|job[\s_-]*title/i, p.title || ''],
+    // Catch-all "name" last (very generic)
+    [/\bname\b/i, p.fullName],
   ];
 
-  // React-compatible setValue
-  const setVal = (el, v) => {
-    if (!v) return false;
-    const tag = el.tagName;
-    if (tag === 'SELECT') {
-      return setSelectVal(el, v);
-    }
-    const proto = tag === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-    const nativeSet = Object.getOwnPropertyDescriptor(proto, 'value');
-    if (nativeSet && nativeSet.set) {
-      nativeSet.set.call(el, v);
-    } else {
-      el.value = v;
-    }
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new Event('blur', { bubbles: true }));
-    el.style.outline = '2px solid #3ecf8e';
-    return true;
-  };
+  // ---- RADIO/CHECKBOX RULES ----
+  const demoRules = [
+    [/\bgender\b|\bsex\b/i, d.gender || ''],
+    [/race|ethni/i, d.race || ''],
+    [/veteran/i, d.veteran || ''],
+    [/disabil/i, d.disability || ''],
+    [/18[\s_-]*years|over[\s_-]*18|at[\s_-]*least[\s_-]*18|legal[\s_-]*age|older\b/i, d.age18 || ''],
+    [/may[\s_-]*we[\s_-]*contact|contact[\s_-]*(your[\s_-]*)?(current|past|previous|former)[\s_-]*(employer|supervisor)/i, d.contact_emp || ''],
+    [/sponsor|visa/i, d.sponsorship || ''],
+    [/authori[sz]ed[\s_-]*to[\s_-]*work|legally[\s_-]*authori|eligible[\s_-]*to[\s_-]*work|right[\s_-]*to[\s_-]*work|work[\s_-]*(permit|authori)/i, d.authorized || ''],
+    [/relocat|willing[\s_-]*to[\s_-]*(move|transfer)/i, d.relocate || ''],
+    [/previously[\s_-]*(employed|worked)|employed[\s_-]*(by|at|with)|worked[\s_-]*(here|for[\s_-]*us)|former[\s_-]*employee/i, d.prev_emp || ''],
+    [/non[\s_-]*compete|confidentiality|restrictive/i, d.noncompete || ''],
+  ];
 
-  // Handle <select> dropdowns (Workday, Greenhouse, etc.)
-  const setSelectVal = (sel, v) => {
-    if (!v) return false;
-    const vLow = v.toLowerCase().replace(/[^a-z0-9]/g, '');
-    let bestIdx = -1;
-    let bestScore = 0;
-    for (let i = 0; i < sel.options.length; i++) {
-      const optText = (sel.options[i].text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const optVal = (sel.options[i].value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (optVal === vLow || optText === vLow) { bestIdx = i; break; }
-      if (optText.includes(vLow) || vLow.includes(optText)) {
-        const score = Math.min(optText.length, vLow.length);
-        if (score > bestScore && score > 2) { bestScore = score; bestIdx = i; }
-      }
-    }
-    if (bestIdx > 0) { // skip index 0 (usually "Select...")
-      sel.selectedIndex = bestIdx;
-      sel.dispatchEvent(new Event('change', { bubbles: true }));
-      sel.style.outline = '2px solid #3ecf8e';
-      return true;
-    }
-    return false;
-  };
+  let n = 0;
 
   // =============================================
-  // FILL TEXT INPUTS & TEXTAREAS
+  // 1) FILL TEXT INPUTS & TEXTAREAS
   // =============================================
   const inputs = document.querySelectorAll(
     'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=submit]):not([type=button]):not([type=password]):not([type=image]):not([type=reset]), textarea'
   );
-  let n = 0;
+
   for (const el of inputs) {
-    if (el.value || el.disabled || el.readOnly) continue;
+    if (el.disabled || el.readOnly) continue;
+    if (el.value && el.value.trim()) continue; // already has a value
     if (el.closest('#jf-floating-btn')) continue;
     const r = el.getBoundingClientRect();
-    if (!r.width && !r.height) continue;
+    if (r.width === 0 && r.height === 0) continue;
 
-    // Type-specific shortcuts
-    if (el.type === 'email' && p.email) { if (setVal(el, p.email)) n++; continue; }
-    if (el.type === 'tel' && p.phone) { if (setVal(el, p.phone)) n++; continue; }
+    // Type-based shortcuts
+    if (el.type === 'email' && p.email) { setVal(el, p.email); n++; continue; }
+    if (el.type === 'tel' && p.phone) { setVal(el, p.phone); n++; continue; }
     if (el.type === 'url') {
-      // Try to match linkedin/github/website
-      let urlDesc = getDesc(el);
-      if (/linked/i.test(urlDesc) && p.linkedin) { if (setVal(el, p.linkedin)) n++; continue; }
-      if (/github/i.test(urlDesc) && (d.github || p.portfolio)) { if (setVal(el, d.github || p.portfolio)) n++; continue; }
-      if (p.portfolio) { if (setVal(el, d.website || p.portfolio)) n++; continue; }
+      const ud = getDesc(el);
+      if (/linked/i.test(ud) && p.linkedin) { setVal(el, p.linkedin); n++; continue; }
+      if (/github/i.test(ud) && (d.github || p.portfolio)) { setVal(el, d.github || p.portfolio); n++; continue; }
+      if (d.website || p.portfolio) { setVal(el, d.website || p.portfolio); n++; continue; }
     }
 
-    // Textarea cover letter detection
+    // Cover letter textarea
     if (el.tagName === 'TEXTAREA' && letter) {
-      let d0 = getDesc(el);
-      if (/cover[\s_-]*letter|why[\s_-]*(do[\s_-]*you|are[\s_-]*you|us\b|join)|motivation/i.test(d0)) {
-        if (setVal(el, letter)) n++;
-        continue;
+      const td = getDesc(el);
+      if (/cover[\s_-]*letter|why[\s_-]*(do|are)[\s_-]*you|motivation|interest/i.test(td)) {
+        setVal(el, letter); n++; continue;
       }
     }
 
     // General rule matching
-    let desc = getDesc(el);
+    const desc = getDesc(el);
     for (const [re, val] of rules) {
-      if (val && re.test(desc)) { if (setVal(el, val)) { n++; break; } }
+      if (val && re.test(desc)) {
+        setVal(el, val);
+        n++;
+        console.log('[JobFlow] Filled:', (el.name || el.id || el.placeholder || '?').substring(0, 40), '=', val.substring(0, 30));
+        break;
+      }
     }
   }
 
   // =============================================
-  // FILL <SELECT> DROPDOWNS
+  // 2) FILL <SELECT> DROPDOWNS
   // =============================================
   const selects = document.querySelectorAll('select');
   for (const sel of selects) {
-    if (sel.disabled || sel.selectedIndex > 0) continue;
+    if (sel.disabled) continue;
+    if (sel.selectedIndex > 0) continue; // already selected something
     const r = sel.getBoundingClientRect();
-    if (!r.width && !r.height) continue;
-    let desc = getDesc(sel);
+    if (r.width === 0 && r.height === 0) continue;
+
+    const desc = getDesc(sel);
+
+    // Try text rules
     for (const [re, val] of rules) {
-      if (val && re.test(desc)) { if (setVal(sel, val)) { n++; break; } }
+      if (val && re.test(desc)) {
+        if (selectByValue(sel, val)) {
+          n++;
+          console.log('[JobFlow] Selected:', (sel.name || sel.id || '?').substring(0, 40), '=', val.substring(0, 30));
+        }
+        break;
+      }
+    }
+    // Try demo rules for select dropdowns too
+    if (sel.selectedIndex <= 0) {
+      for (const [re, val] of demoRules) {
+        if (val && re.test(desc)) {
+          if (selectByValue(sel, val)) {
+            n++;
+            console.log('[JobFlow] Selected demo:', (sel.name || sel.id || '?').substring(0, 40), '=', val.substring(0, 30));
+          }
+          break;
+        }
+      }
     }
   }
 
   // =============================================
-  // RADIO BUTTONS & CHECKBOXES (demographics + yes/no)
+  // 3) FILL RADIO BUTTONS & CHECKBOXES
   // =============================================
-  const demoRules = [
-    [/gender|sex/i, d.gender || ''],
-    [/race|ethni/i, d.race || ''],
-    [/veteran/i, d.veteran || ''],
-    [/disabil/i, d.disability || ''],
-    [/18[\s_-]*years|older\b|over[\s_-]*18|at[\s_-]*least[\s_-]*18|legal[\s_-]*age/i, d.age18 || ''],
-    [/contact[\s_-]*(current|past|previous)[\s_-]*employ|may[\s_-]*we[\s_-]*contact/i, d.contact_emp || ''],
-    [/sponsor|visa[\s_-]*sponsor/i, d.sponsorship || ''],
-    [/authori[sz]ed[\s_-]*to[\s_-]*work|legally[\s_-]*authori|eligible[\s_-]*to[\s_-]*work|right[\s_-]*to[\s_-]*work|work[\s_-]*authori/i, d.authorized || ''],
-    [/relocat|willing[\s_-]*to[\s_-]*move/i, d.relocate || ''],
-    [/previously[\s_-]*employed|employed[\s_-]*(by|at|with)[\s_-]*(this|our|us)|worked[\s_-]*here|former[\s_-]*employee/i, d.prev_emp || ''],
-    [/non[\s_-]*compete|confidentiality|restrictive[\s_-]*covenant/i, d.noncompete || ''],
-  ];
-
-  const clickOption = (el) => {
-    if (el.checked) return false;
-    el.click();
-    el.dispatchEvent(new Event('change', { bubbles: true }));
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-    return true;
-  };
-
-  // Group radio/checkbox by their name or parent container
-  const options = document.querySelectorAll('input[type="radio"], input[type="checkbox"]');
-  for (const el of options) {
+  const radios = document.querySelectorAll('input[type="radio"], input[type="checkbox"]');
+  for (const el of radios) {
     if (el.disabled || el.readOnly || el.checked) continue;
     const r = el.getBoundingClientRect();
-    if (!r.width && !r.height) continue;
+    if (r.width === 0 && r.height === 0) continue;
 
-    // Build question context text
-    let qText = '';
-    const fieldset = el.closest('fieldset, [role="group"], [role="radiogroup"], .form-group, .application-question, .question-container, .section, .css-1v1hxbf, [data-automation-id]');
-    if (fieldset) {
-      // Get just the question heading, not all option text
-      const legend = fieldset.querySelector('legend, h1, h2, h3, h4, h5, label:first-of-type, .question-text, [class*="label"], [class*="question"]');
-      qText = legend ? legend.textContent : fieldset.textContent.substring(0, 300);
-    }
-    if (!qText) {
-      const parentDiv = el.closest('div, li, tr');
-      if (parentDiv) qText = parentDiv.textContent.substring(0, 300);
-    }
-    qText += ' ' + (el.name || '');
-
-    // Build option text
-    let optText = el.value || '';
-    if (el.id) {
-      try {
-        const l = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]');
-        if (l) optText += ' ' + l.textContent;
-      } catch (e) {}
-    }
-    const wrap = el.closest('label');
-    if (wrap) optText += ' ' + wrap.textContent;
-
-    qText = qText.toLowerCase();
-    optText = optText.toLowerCase();
+    // Get question context
+    const qText = getQuestionText(el);
+    // Get this option's label text
+    const optText = getOptionText(el);
 
     for (const [re, val] of demoRules) {
       if (!val) continue;
       if (!re.test(qText)) continue;
 
-      const normVal = val.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
-      const normOpt = optText.replace(/[^a-z0-9 ]/g, '').trim();
-
-      let matched = false;
-
-      // Yes/No matching (handle various formats)
-      if (normVal === 'yes') {
-        matched = /^(yes|y|true|1)$/.test(normOpt.replace(/\s/g, ''));
-      } else if (normVal === 'no') {
-        matched = /^(no|n|false|0)$/.test(normOpt.replace(/\s/g, ''));
-      }
-
-      // Exact match
-      if (!matched && normOpt === normVal) {
-        matched = true;
-      }
-
-      // Fuzzy match — one contains the other
-      if (!matched && normOpt.length > 3 && normVal.length > 3) {
-        const optWords = normOpt.replace(/\s+/g, '');
-        const valWords = normVal.replace(/\s+/g, '');
-        if (optWords.includes(valWords) || valWords.includes(optWords)) {
-          matched = true;
-        }
-      }
-
-      // Decline/prefer not match
-      if (!matched && /decline|prefer[\s_]*not|don.?t[\s_]*wish/i.test(normVal) && /decline|prefer[\s_]*not|don.?t[\s_]*wish/i.test(normOpt)) {
-        matched = true;
-      }
-
-      if (matched) {
-        if (clickOption(el)) {
-          n++;
-          console.log('[JobFlow] Checked:', el.name || el.id, '=', optText.trim().substring(0, 50));
-        }
+      if (matchOption(val, optText)) {
+        el.click();
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        n++;
+        console.log('[JobFlow] Checked:', (el.name || el.id || '?').substring(0, 30), '=', optText.substring(0, 40));
         break;
       }
     }
@@ -306,7 +229,53 @@ function fillForm(p, letter) {
   return n;
 }
 
-// Helper: build a description string from an element's attributes and labels
+// =============================================
+// HELPERS
+// =============================================
+
+function setVal(el, v) {
+  if (!v) return;
+  const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const nativeSet = Object.getOwnPropertyDescriptor(proto, 'value');
+  if (nativeSet && nativeSet.set) {
+    nativeSet.set.call(el, v);
+  } else {
+    el.value = v;
+  }
+  el.dispatchEvent(new Event('input', { bubbles: true }));
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  el.dispatchEvent(new Event('blur', { bubbles: true }));
+  // React-specific
+  const tracker = el._valueTracker;
+  if (tracker) tracker.setValue('');
+  el.style.outline = '2px solid #3ecf8e';
+}
+
+function selectByValue(sel, v) {
+  if (!v) return false;
+  const vNorm = v.toLowerCase().replace(/[^a-z0-9]/g, '');
+  let bestIdx = -1, bestScore = 0;
+
+  for (let i = 1; i < sel.options.length; i++) {
+    const oText = (sel.options[i].text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const oVal = (sel.options[i].value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    // Exact match
+    if (oVal === vNorm || oText === vNorm) { bestIdx = i; break; }
+    // Contains match
+    if (oText.includes(vNorm) || vNorm.includes(oText)) {
+      const score = Math.min(oText.length, vNorm.length);
+      if (score > bestScore && score > 2) { bestScore = score; bestIdx = i; }
+    }
+  }
+  if (bestIdx > 0) {
+    sel.selectedIndex = bestIdx;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    sel.style.outline = '2px solid #3ecf8e';
+    return true;
+  }
+  return false;
+}
+
 function getDesc(el) {
   let desc = [
     el.name, el.id, el.placeholder,
@@ -316,19 +285,82 @@ function getDesc(el) {
     el.getAttribute('data-testid'),
     el.getAttribute('data-field-name'),
   ].filter(Boolean).join(' ');
+
+  // Associated label
   if (el.id) {
     try {
-      const l = document.querySelector('label[for="' + (window.CSS && CSS.escape ? CSS.escape(el.id) : el.id) + '"]');
-      if (l) desc += ' ' + l.textContent;
+      const lbl = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+      if (lbl) desc += ' ' + lbl.textContent;
+    } catch (e) {}
+  }
+  // Wrapping label
+  const wrap = el.closest('label');
+  if (wrap) desc += ' ' + wrap.textContent;
+  // Parent container label
+  const parent = el.closest('.field, .form-group, .form-field, [data-automation-id]');
+  if (parent) {
+    const lbl = parent.querySelector('label, .label, [class*="label"]');
+    if (lbl && !desc.includes(lbl.textContent.trim())) desc += ' ' + lbl.textContent;
+  }
+  return desc;
+}
+
+function getQuestionText(el) {
+  let text = el.name || '';
+  // Try fieldset/group containers
+  const group = el.closest('fieldset, [role="group"], [role="radiogroup"], .form-group, .application-question, .question-container, [data-automation-id]');
+  if (group) {
+    const heading = group.querySelector('legend, h1, h2, h3, h4, h5, .question-text, [class*="question"], [class*="label"]');
+    text += ' ' + (heading ? heading.textContent : group.textContent.substring(0, 400));
+  } else {
+    // Walk up to find a parent with descriptive text
+    let parent = el.parentElement;
+    for (let i = 0; i < 5 && parent; i++) {
+      if (parent.textContent.length > 10 && parent.textContent.length < 500) {
+        text += ' ' + parent.textContent;
+        break;
+      }
+      parent = parent.parentElement;
+    }
+  }
+  return text.toLowerCase();
+}
+
+function getOptionText(el) {
+  let text = el.value || '';
+  if (el.id) {
+    try {
+      const lbl = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
+      if (lbl) text += ' ' + lbl.textContent;
     } catch (e) {}
   }
   const wrap = el.closest('label');
-  if (wrap) desc += ' ' + wrap.textContent;
-  // Also check parent div/li for nearby label text
-  const parent = el.closest('.field, .form-group, .form-field, .css-1v1hxbf, [data-automation-id]');
-  if (parent) {
-    const lbl = parent.querySelector('label, .label, [class*="label"]');
-    if (lbl && !desc.includes(lbl.textContent)) desc += ' ' + lbl.textContent;
+  if (wrap) text += ' ' + wrap.textContent;
+  return text.toLowerCase();
+}
+
+function matchOption(savedVal, optionText) {
+  const sv = savedVal.toLowerCase().trim();
+  const ot = optionText.trim();
+
+  // Yes/No exact
+  if (sv === 'yes') return /\byes\b|\btrue\b/i.test(ot);
+  if (sv === 'no') return /\bno\b|\bfalse\b/i.test(ot) && !/\bnot\b/i.test(ot);
+
+  // Normalize for fuzzy
+  const svN = sv.replace(/[^a-z0-9]/g, '');
+  const otN = ot.replace(/[^a-z0-9]/g, '');
+
+  // Exact normalized
+  if (svN === otN) return true;
+
+  // Contains
+  if (svN.length > 3 && otN.length > 3) {
+    if (otN.includes(svN) || svN.includes(otN)) return true;
   }
-  return desc;
+
+  // Decline patterns
+  if (/decline|prefernot|dontwish/i.test(svN) && /decline|prefernot|dontwish/i.test(otN)) return true;
+
+  return false;
 }
