@@ -34,62 +34,94 @@ function jfFlash(msg, color) {
   f._t = setTimeout(() => { f.style.opacity = '0'; }, 5000);
 }
 
-try {
-  // Only inject a button where a form actually lives:
-  //  - always in the top page (entry point), OR
-  //  - in a sub-frame that genuinely contains form fields (skips ad/tracking iframes)
-  const isTop = window.top === window;
-  const frameHasFields = deepQueryAll('input,textarea,select', document).length > 0;
+// ---- Cached profile so we fetch once, then reuse for auto-fill + manual ----
+let JF_DATA = null;
+async function jfGetData() {
+  if (JF_DATA) return JF_DATA;
+  const res = await fetch(JF_API);
+  if (!res.ok) throw new Error('Server returned ' + res.status);
+  JF_DATA = await res.json();
+  return JF_DATA;
+}
 
-  if (isTop || frameHasFields) {
+// ---- Does this page/frame look like a real application/signup form? ----
+// Requires an identity field so we don't auto-fill random search boxes.
+function jfLooksLikeForm() {
+  const fields = deepQueryAll('input,textarea,select');
+  return fields.some((el) => {
+    if (el.type === 'email') return true;
+    return /mail|first[\s_-]*name|last[\s_-]*name|full[\s_-]*name|legal[\s_-]*name|resume|cover[\s_-]*letter|linked[\s_-]*in/i.test(getDesc(el));
+  });
+}
+
+let jfBtn = null;
+function jfSetBtn(txt, revert) {
+  if (!jfBtn) return;
+  jfBtn.textContent = txt;
+  if (revert) setTimeout(() => { if (jfBtn) jfBtn.textContent = '⚡'; }, 3500);
+}
+
+// ---- The one fill routine, used by both the button and auto-fill ----
+// manual=true  -> show every outcome (errors, "nothing found")
+// manual=false -> only speak up when it actually fills something (no nagging)
+async function jfRun(manual) {
+  if (jfBtn && manual) { jfBtn.classList.add('filling'); jfBtn.textContent = '⏳'; }
+  try {
+    const data = await jfGetData();
+    if (!data.profile || !data.profile.fullName) {
+      if (manual) jfFlash('Your profile is empty. Open localhost:3000 → My Profile → fill and save.', '#f59e0b');
+      jfSetBtn('⚡');
+      return 0;
+    }
+    const n = fillForm(data.profile, data.letter || '');
+    if (n > 0) {
+      jfSetBtn('✅ ' + n, true);
+      jfFlash((manual ? 'Filled ' : 'Auto-filled ') + n + ' field' + (n > 1 ? 's' : '') + ' (green). Review before submitting.', '#3ecf8e');
+    } else if (manual) {
+      jfSetBtn('∅', true);
+      jfFlash('No empty fields found here. If the form is in another section/popup, open it and click ⚡ again.', '#f59e0b');
+    }
+    return n;
+  } catch (err) {
+    JF_DATA = null; // allow retry after the server comes back
+    if (manual) {
+      jfSetBtn('❌', true);
+      jfFlash('Cannot reach the JobFlow server. Start it with start-jobflow.bat (or npm start). ' + err.message, '#ff4d4f');
+    }
+    return 0;
+  } finally {
+    if (jfBtn) jfBtn.classList.remove('filling');
+  }
+}
+
+try {
+  // Inject the button in the top page, or in any sub-frame that truly has fields
+  // (skips ad/tracking iframes). Each frame fills its own fields.
+  const isTop = window.top === window;
+  if (isTop || deepQueryAll('input,textarea,select', document).length > 0) {
     const old = document.getElementById('jf-floating-btn');
     if (old) old.remove();
 
-    const btn = document.createElement('button');
-    btn.id = 'jf-floating-btn';
-    btn.textContent = '⚡';
-    btn.title = 'JobFlow Autofill — click to fill this form';
-    document.body.appendChild(btn);
-
-    btn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      btn.classList.add('filling');
-      btn.textContent = '⏳';
-
-      try {
-        const res = await fetch(JF_API);
-        if (!res.ok) throw new Error('Server returned ' + res.status);
-        const data = await res.json();
-
-        if (!data.profile || !data.profile.fullName) {
-          jfFlash('Your profile is empty. Open localhost:3000 → My Profile → fill and save.', '#f59e0b');
-          btn.textContent = '⚡';
-          return;
-        }
-
-        const n = fillForm(data.profile, data.letter || '');
-        console.log('[JobFlow] Filled', n, 'fields');
-
-        if (n > 0) {
-          btn.textContent = '✅ ' + n;
-          jfFlash('Filled ' + n + ' field' + (n > 1 ? 's' : '') + ' (highlighted green). Review before submitting.', '#3ecf8e');
-        } else {
-          btn.textContent = '∅';
-          jfFlash('No empty fields found here. If the form is in another tab/section or a popup, open it and click ⚡ again.', '#f59e0b');
-        }
-        setTimeout(() => { btn.textContent = '⚡'; }, 3500);
-
-      } catch (err) {
-        console.error('[JobFlow] Error:', err);
-        btn.textContent = '❌';
-        jfFlash('Cannot reach the JobFlow server. Start it with start-jobflow.bat (or npm start). ' + err.message, '#ff4d4f');
-        setTimeout(() => { btn.textContent = '⚡'; }, 3500);
-      } finally {
-        btn.classList.remove('filling');
-      }
-    });
+    jfBtn = document.createElement('button');
+    jfBtn.id = 'jf-floating-btn';
+    jfBtn.textContent = '⚡';
+    jfBtn.title = 'JobFlow Autofill — click to fill this form (auto-fills on load too)';
+    document.body.appendChild(jfBtn);
+    jfBtn.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); jfRun(true); });
   }
+
+  // ---- AUTO-FILL: on load, and again whenever a new step/modal renders ----
+  let autoTimer = null;
+  const scheduleAuto = () => {
+    clearTimeout(autoTimer);
+    autoTimer = setTimeout(() => { if (jfLooksLikeForm()) jfRun(false); }, 1000);
+  };
+  // Initial pass (wait for SPA frameworks to render their fields)
+  setTimeout(scheduleAuto, 1200);
+  // Re-run on DOM changes (Workday/Oracle multi-step, LinkedIn Easy Apply modal, etc.),
+  // heavily debounced. fillForm only touches empty fields, so re-runs are safe & idempotent.
+  const obs = new MutationObserver(scheduleAuto);
+  obs.observe(document.documentElement, { childList: true, subtree: true });
 } catch (initErr) {
   console.warn('[JobFlow] Init skipped:', initErr.message);
 }
