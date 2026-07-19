@@ -3,11 +3,15 @@
 
 const JF_API = 'http://127.0.0.1:3000/api/data/extension';
 
-if (!document.getElementById('jf-floating-btn')) {
+try {
+  // Guard: remove old button if extension was reloaded
+  const old = document.getElementById('jf-floating-btn');
+  if (old) old.remove();
+
   const btn = document.createElement('button');
   btn.id = 'jf-floating-btn';
   btn.textContent = '\u26A1';
-  btn.title = 'JobFlow Autofill';
+  btn.title = 'JobFlow Autofill — click to fill this form';
   document.body.appendChild(btn);
 
   btn.addEventListener('click', async (e) => {
@@ -17,7 +21,6 @@ if (!document.getElementById('jf-floating-btn')) {
     btn.textContent = '\u23F3';
 
     try {
-      // Direct fetch — no background script dependency
       const res = await fetch(JF_API);
       if (!res.ok) throw new Error('Server returned ' + res.status);
       const data = await res.json();
@@ -44,6 +47,9 @@ if (!document.getElementById('jf-floating-btn')) {
       btn.classList.remove('filling');
     }
   });
+} catch (initErr) {
+  // Extension context invalidated — silently ignore (user must refresh page)
+  console.warn('[JobFlow] Init skipped:', initErr.message);
 }
 
 // =============================================
