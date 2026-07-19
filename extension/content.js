@@ -1,54 +1,96 @@
 // JobFlow Autofill — Content Script
-// Fetches profile data DIRECTLY from localhost (no background script needed)
+// Fetches profile data from the local JobFlow server and fills the current form.
 
 const JF_API = 'http://127.0.0.1:3000/api/data/extension';
 
+// ---- Deep query that pierces open shadow DOM (Workday, iCIMS, web components) ----
+function deepQueryAll(selector, root, out) {
+  out = out || [];
+  root = root || document;
+  try {
+    root.querySelectorAll(selector).forEach((e) => out.push(e));
+    root.querySelectorAll('*').forEach((e) => {
+      if (e.shadowRoot) deepQueryAll(selector, e.shadowRoot, out);
+    });
+  } catch (e) { /* detached/cross-origin — skip */ }
+  return out;
+}
+
+// ---- Small transient on-page message (no ugly alert() spam) ----
+function jfFlash(msg, color) {
+  let f = document.getElementById('jf-flash');
+  if (!f) {
+    f = document.createElement('div');
+    f.id = 'jf-flash';
+    document.body.appendChild(f);
+  }
+  f.textContent = msg;
+  f.style.cssText =
+    'position:fixed;bottom:80px;right:20px;max-width:280px;background:#171a2b;color:#e7e9f3;' +
+    'border-left:4px solid ' + (color || '#6d8bff') + ';padding:12px 14px;border-radius:10px;' +
+    'font:13px/1.5 "Segoe UI",Arial,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.35);' +
+    'z-index:2147483647;opacity:1;transition:opacity .4s';
+  clearTimeout(f._t);
+  f._t = setTimeout(() => { f.style.opacity = '0'; }, 5000);
+}
+
 try {
-  // Guard: remove old button if extension was reloaded
-  const old = document.getElementById('jf-floating-btn');
-  if (old) old.remove();
+  // Only inject a button where a form actually lives:
+  //  - always in the top page (entry point), OR
+  //  - in a sub-frame that genuinely contains form fields (skips ad/tracking iframes)
+  const isTop = window.top === window;
+  const frameHasFields = deepQueryAll('input,textarea,select', document).length > 0;
 
-  const btn = document.createElement('button');
-  btn.id = 'jf-floating-btn';
-  btn.textContent = '\u26A1';
-  btn.title = 'JobFlow Autofill — click to fill this form';
-  document.body.appendChild(btn);
+  if (isTop || frameHasFields) {
+    const old = document.getElementById('jf-floating-btn');
+    if (old) old.remove();
 
-  btn.addEventListener('click', async (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    btn.classList.add('filling');
-    btn.textContent = '\u23F3';
+    const btn = document.createElement('button');
+    btn.id = 'jf-floating-btn';
+    btn.textContent = '⚡';
+    btn.title = 'JobFlow Autofill — click to fill this form';
+    document.body.appendChild(btn);
 
-    try {
-      const res = await fetch(JF_API);
-      if (!res.ok) throw new Error('Server returned ' + res.status);
-      const data = await res.json();
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      btn.classList.add('filling');
+      btn.textContent = '⏳';
 
-      console.log('[JobFlow] Data received, profile:', data.profile?.fullName);
+      try {
+        const res = await fetch(JF_API);
+        if (!res.ok) throw new Error('Server returned ' + res.status);
+        const data = await res.json();
 
-      if (!data.profile || !data.profile.fullName) {
-        alert('JobFlow: Profile is empty.\n\n1. Open http://localhost:3000\n2. Go to My Profile tab\n3. Fill your info and click Save');
-        btn.textContent = '\u26A1';
-        return;
+        if (!data.profile || !data.profile.fullName) {
+          jfFlash('Your profile is empty. Open localhost:3000 → My Profile → fill and save.', '#f59e0b');
+          btn.textContent = '⚡';
+          return;
+        }
+
+        const n = fillForm(data.profile, data.letter || '');
+        console.log('[JobFlow] Filled', n, 'fields');
+
+        if (n > 0) {
+          btn.textContent = '✅ ' + n;
+          jfFlash('Filled ' + n + ' field' + (n > 1 ? 's' : '') + ' (highlighted green). Review before submitting.', '#3ecf8e');
+        } else {
+          btn.textContent = '∅';
+          jfFlash('No empty fields found here. If the form is in another tab/section or a popup, open it and click ⚡ again.', '#f59e0b');
+        }
+        setTimeout(() => { btn.textContent = '⚡'; }, 3500);
+
+      } catch (err) {
+        console.error('[JobFlow] Error:', err);
+        btn.textContent = '❌';
+        jfFlash('Cannot reach the JobFlow server. Start it with start-jobflow.bat (or npm start). ' + err.message, '#ff4d4f');
+        setTimeout(() => { btn.textContent = '⚡'; }, 3500);
+      } finally {
+        btn.classList.remove('filling');
       }
-
-      const n = fillForm(data.profile, data.letter || '');
-      console.log('[JobFlow] Filled', n, 'fields');
-      btn.textContent = n > 0 ? ('\u2705 ' + n) : '0';
-      setTimeout(() => { btn.textContent = '\u26A1'; }, 3000);
-
-    } catch (err) {
-      console.error('[JobFlow] Error:', err);
-      btn.textContent = '\u274C';
-      alert('JobFlow: Cannot reach server.\n\nRun start-jobflow.bat or:\n  cd claude_job && npm start\n\nError: ' + err.message);
-      setTimeout(() => { btn.textContent = '\u26A1'; }, 3000);
-    } finally {
-      btn.classList.remove('filling');
-    }
-  });
+    });
+  }
 } catch (initErr) {
-  // Extension context invalidated — silently ignore (user must refresh page)
   console.warn('[JobFlow] Init skipped:', initErr.message);
 }
 
@@ -69,8 +111,6 @@ function fillForm(p, letter) {
       d = p.demographics;
     }
   } catch (e) { console.warn('[JobFlow] demographics parse error', e); }
-
-  console.log('[JobFlow] Demographics keys:', Object.keys(d).filter(k => d[k]).join(', '));
 
   // ---- TEXT INPUT RULES (specific first, general last) ----
   const rules = [
@@ -106,7 +146,7 @@ function fillForm(p, letter) {
     [/\bname\b/i, p.fullName],
   ];
 
-  // ---- RADIO/CHECKBOX RULES ----
+  // ---- RADIO/CHECKBOX/SELECT DEMOGRAPHIC RULES ----
   const demoRules = [
     [/\bgender\b|\bsex\b/i, d.gender || ''],
     [/race|ethni/i, d.race || ''],
@@ -123,10 +163,8 @@ function fillForm(p, letter) {
 
   let n = 0;
 
-  // =============================================
-  // 1) FILL TEXT INPUTS & TEXTAREAS
-  // =============================================
-  const inputs = document.querySelectorAll(
+  // 1) TEXT INPUTS & TEXTAREAS (shadow-DOM aware)
+  const inputs = deepQueryAll(
     'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=submit]):not([type=button]):not([type=password]):not([type=image]):not([type=reset]), textarea'
   );
 
@@ -137,7 +175,6 @@ function fillForm(p, letter) {
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) continue;
 
-    // Type-based shortcuts
     if (el.type === 'email' && p.email) { setVal(el, p.email); n++; continue; }
     if (el.type === 'tel' && p.phone) { setVal(el, p.phone); n++; continue; }
     if (el.type === 'url') {
@@ -147,7 +184,6 @@ function fillForm(p, letter) {
       if (d.website || p.portfolio) { setVal(el, d.website || p.portfolio); n++; continue; }
     }
 
-    // Cover letter textarea
     if (el.tagName === 'TEXTAREA' && letter) {
       const td = getDesc(el);
       if (/cover[\s_-]*letter|why[\s_-]*(do|are)[\s_-]*you|motivation|interest/i.test(td)) {
@@ -155,78 +191,49 @@ function fillForm(p, letter) {
       }
     }
 
-    // General rule matching
     const desc = getDesc(el);
     for (const [re, val] of rules) {
-      if (val && re.test(desc)) {
-        setVal(el, val);
-        n++;
-        console.log('[JobFlow] Filled:', (el.name || el.id || el.placeholder || '?').substring(0, 40), '=', val.substring(0, 30));
-        break;
-      }
+      if (val && re.test(desc)) { setVal(el, val); n++; break; }
     }
   }
 
-  // =============================================
-  // 2) FILL <SELECT> DROPDOWNS
-  // =============================================
-  const selects = document.querySelectorAll('select');
+  // 2) <SELECT> DROPDOWNS (shadow-DOM aware)
+  const selects = deepQueryAll('select');
   for (const sel of selects) {
     if (sel.disabled) continue;
-    if (sel.selectedIndex > 0) continue; // already selected something
+    if (sel.selectedIndex > 0) continue;
     const r = sel.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) continue;
 
     const desc = getDesc(sel);
-
-    // Try text rules
     for (const [re, val] of rules) {
-      if (val && re.test(desc)) {
-        if (selectByValue(sel, val)) {
-          n++;
-          console.log('[JobFlow] Selected:', (sel.name || sel.id || '?').substring(0, 40), '=', val.substring(0, 30));
-        }
-        break;
-      }
+      if (val && re.test(desc)) { if (selectByValue(sel, val)) n++; break; }
     }
-    // Try demo rules for select dropdowns too
     if (sel.selectedIndex <= 0) {
       for (const [re, val] of demoRules) {
-        if (val && re.test(desc)) {
-          if (selectByValue(sel, val)) {
-            n++;
-            console.log('[JobFlow] Selected demo:', (sel.name || sel.id || '?').substring(0, 40), '=', val.substring(0, 30));
-          }
-          break;
-        }
+        if (val && re.test(desc)) { if (selectByValue(sel, val)) n++; break; }
       }
     }
   }
 
-  // =============================================
-  // 3) FILL RADIO BUTTONS & CHECKBOXES
-  // =============================================
-  const radios = document.querySelectorAll('input[type="radio"], input[type="checkbox"]');
+  // 3) RADIO BUTTONS & CHECKBOXES (shadow-DOM aware)
+  const radios = deepQueryAll('input[type="radio"], input[type="checkbox"]');
   for (const el of radios) {
     if (el.disabled || el.readOnly || el.checked) continue;
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) continue;
 
-    // Get question context
     const qText = getQuestionText(el);
-    // Get this option's label text
     const optText = getOptionText(el);
 
     for (const [re, val] of demoRules) {
       if (!val) continue;
       if (!re.test(qText)) continue;
-
       if (matchOption(val, optText)) {
         el.click();
         el.dispatchEvent(new Event('change', { bubbles: true }));
         el.dispatchEvent(new Event('input', { bubbles: true }));
         n++;
-        console.log('[JobFlow] Checked:', (el.name || el.id || '?').substring(0, 30), '=', optText.substring(0, 40));
         break;
       }
     }
@@ -242,18 +249,19 @@ function fillForm(p, letter) {
 function setVal(el, v) {
   if (!v) return;
   const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  const nativeSet = Object.getOwnPropertyDescriptor(proto, 'value');
-  if (nativeSet && nativeSet.set) {
-    nativeSet.set.call(el, v);
+  const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+  const lastValue = el.value;
+  if (desc && desc.set) {
+    desc.set.call(el, v);
   } else {
     el.value = v;
   }
+  // Make React's controlled-input tracker register the change (must run AFTER
+  // the native setter and use the PREVIOUS value, or React reverts the field).
+  const tracker = el._valueTracker;
+  if (tracker) tracker.setValue(lastValue);
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
-  el.dispatchEvent(new Event('blur', { bubbles: true }));
-  // React-specific
-  const tracker = el._valueTracker;
-  if (tracker) tracker.setValue('');
   el.style.outline = '2px solid #3ecf8e';
 }
 
@@ -265,9 +273,7 @@ function selectByValue(sel, v) {
   for (let i = 1; i < sel.options.length; i++) {
     const oText = (sel.options[i].text || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     const oVal = (sel.options[i].value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    // Exact match
     if (oVal === vNorm || oText === vNorm) { bestIdx = i; break; }
-    // Contains match
     if (oText.includes(vNorm) || vNorm.includes(oText)) {
       const score = Math.min(oText.length, vNorm.length);
       if (score > bestScore && score > 2) { bestScore = score; bestIdx = i; }
@@ -292,17 +298,14 @@ function getDesc(el) {
     el.getAttribute('data-field-name'),
   ].filter(Boolean).join(' ');
 
-  // Associated label
   if (el.id) {
     try {
       const lbl = document.querySelector('label[for="' + CSS.escape(el.id) + '"]');
       if (lbl) desc += ' ' + lbl.textContent;
     } catch (e) {}
   }
-  // Wrapping label
   const wrap = el.closest('label');
   if (wrap) desc += ' ' + wrap.textContent;
-  // Parent container label
   const parent = el.closest('.field, .form-group, .form-field, [data-automation-id]');
   if (parent) {
     const lbl = parent.querySelector('label, .label, [class*="label"]');
@@ -313,13 +316,11 @@ function getDesc(el) {
 
 function getQuestionText(el) {
   let text = el.name || '';
-  // Try fieldset/group containers
   const group = el.closest('fieldset, [role="group"], [role="radiogroup"], .form-group, .application-question, .question-container, [data-automation-id]');
   if (group) {
     const heading = group.querySelector('legend, h1, h2, h3, h4, h5, .question-text, [class*="question"], [class*="label"]');
     text += ' ' + (heading ? heading.textContent : group.textContent.substring(0, 400));
   } else {
-    // Walk up to find a parent with descriptive text
     let parent = el.parentElement;
     for (let i = 0; i < 5 && parent; i++) {
       if (parent.textContent.length > 10 && parent.textContent.length < 500) {
@@ -349,24 +350,15 @@ function matchOption(savedVal, optionText) {
   const sv = savedVal.toLowerCase().trim();
   const ot = optionText.trim();
 
-  // Yes/No exact
   if (sv === 'yes') return /\byes\b|\btrue\b/i.test(ot);
   if (sv === 'no') return /\bno\b|\bfalse\b/i.test(ot) && !/\bnot\b/i.test(ot);
 
-  // Normalize for fuzzy
   const svN = sv.replace(/[^a-z0-9]/g, '');
   const otN = ot.replace(/[^a-z0-9]/g, '');
-
-  // Exact normalized
   if (svN === otN) return true;
-
-  // Contains
   if (svN.length > 3 && otN.length > 3) {
     if (otN.includes(svN) || svN.includes(otN)) return true;
   }
-
-  // Decline patterns
   if (/decline|prefernot|dontwish/i.test(svN) && /decline|prefernot|dontwish/i.test(otN)) return true;
-
   return false;
 }
