@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "JobFlow Autofill v2",
-  "version": "2.4.0",
-  "description": "Auto-fills job forms on load and through multi-step flows (Workday, Greenhouse, Lever, LinkedIn, Oracle). Shadow-DOM aware, React-safe.",
+  "version": "2.5.0",
+  "description": "Section-aware autofill for Workday, Greenhouse, Lever, iCIMS, Ashby and career pages. Won't put your name in Company/School/Referral fields or your home address in Education.",
   "permissions": [],
   "host_permissions": ["*://*/*"],
   "action": {
@@ -13,7 +13,7 @@
     {
       "matches": ["<all_urls>"],
       "css": ["content.css"],
-      "js": ["content.js"],
+      "js": ["matcher.js", "content.js"],
       "all_frames": true
     }
   ],

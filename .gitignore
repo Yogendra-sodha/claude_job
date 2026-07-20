@@ -1,3 +1,8 @@
 node_modules/
 .env
 *.log
+
+# Captured ATS form samples may contain personal data (resume filenames,
+# pre-filled values) — keep them local, never push. capture.js/test.js/README
+# in ats-samples/ ARE tracked; the *.json captures are not.
+ats-samples/*.json
