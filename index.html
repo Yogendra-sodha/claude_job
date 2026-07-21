@@ -368,14 +368,24 @@
           <option value="manual">Free / Manual — copy a ready prompt into ChatGPT or Claude.ai</option>
           <option value="openai">OpenAI API — generate in-app instantly (uses your credit)</option>
         </select>
-        <p class="hint">Manual mode is $0. API mode uses <code>gpt-4o-mini</code> — roughly $0.0001 per cover letter, so your $5 credit ≈ thousands of applications.</p>
+        <p class="hint">Manual mode is $0. API mode powers in-app generation <b>and</b> the extension's AI autofill (answering questions the rules can't) — about a fraction of a cent per application.</p>
       </div>
       <div id="openaiBox" style="display:none">
-        <div class="field"><label>OpenAI API key</label><input id="s_key" type="password" placeholder="sk-..."><p class="hint">Stored only in this browser (localStorage) on this computer. Get one at platform.openai.com/api-keys.</p></div>
-        <div class="field"><label>Model</label><select id="s_model">
-          <option value="gpt-4o-mini" selected>gpt-4o-mini (cheapest, great)</option>
-          <option value="gpt-4o">gpt-4o (higher quality, ~15× cost)</option>
-        </select></div>
+        <div class="field"><label>Provider</label>
+          <select id="s_provider">
+            <option value="openai">OpenAI</option>
+            <option value="deepseek">DeepSeek (cheapest frontier)</option>
+            <option value="openrouter">OpenRouter (any model, one key)</option>
+            <option value="ollama">Ollama (local, free, fully private)</option>
+            <option value="custom">Custom…</option>
+          </select>
+          <p class="hint">All use the OpenAI-compatible API, so switching provider is instant. Picking one fills in its base URL &amp; a typical model below.</p>
+        </div>
+        <div class="grid2">
+          <div class="field"><label>API base URL</label><input id="s_base" placeholder="https://api.openai.com/v1"></div>
+          <div class="field"><label>Model</label><input id="s_model" placeholder="gpt-5"></div>
+        </div>
+        <div class="field"><label>API key</label><input id="s_key" type="password" placeholder="sk-..."><p class="hint">Stored in your local database on this computer, sent only to the provider you choose. For Ollama, any placeholder works.</p></div>
         <button class="btn ghost sm" id="testKey">Test connection</button>
         <span class="small" id="keyStatus"></span>
       </div>
@@ -908,25 +918,48 @@ function loadFeedCfg(){
 }
 
 /* ---------- SETTINGS ---------- */
+const AI_PRESETS={
+  openai:{base:'https://api.openai.com/v1',model:'gpt-5'},
+  deepseek:{base:'https://api.deepseek.com/v1',model:'deepseek-chat'},
+  openrouter:{base:'https://openrouter.ai/api/v1',model:'openai/gpt-5'},
+  ollama:{base:'http://localhost:11434/v1',model:'llama3.1'},
+  custom:null
+};
 function loadSettings(){
   const s=store.get('settings',{mode:'manual'});
-  $('s_mode').value=s.mode||'manual';$('s_key').value=s.key||'';$('s_model').value=s.model||'gpt-4o-mini';
+  $('s_mode').value=s.mode||'manual';
+  $('s_key').value=s.key||s.api_key||'';
+  $('s_model').value=s.model||'gpt-5';
+  $('s_base').value=s.api_base||s.base||'https://api.openai.com/v1';
+  $('s_provider').value=s.provider||'openai';
   $('openaiBox').style.display=s.mode==='openai'?'block':'none';genModeLabel();
 }
 $('s_mode').onchange=()=>{$('openaiBox').style.display=$('s_mode').value==='openai'?'block':'none'};
+$('s_provider').onchange=()=>{
+  const p=AI_PRESETS[$('s_provider').value];
+  if(p){$('s_base').value=p.base;$('s_model').value=p.model;}
+};
 $('saveSettings').onclick=()=>{
   const prev=store.get('settings',{});
-  store.set('settings',Object.assign({},prev,{mode:$('s_mode').value,key:$('s_key').value.trim(),model:$('s_model').value}));
+  store.set('settings',Object.assign({},prev,{
+    mode:$('s_mode').value,
+    key:$('s_key').value.trim(),
+    model:$('s_model').value.trim()||'gpt-5',
+    api_base:$('s_base').value.trim()||'https://api.openai.com/v1',
+    provider:$('s_provider').value
+  }));
   toast('Settings saved');genModeLabel();renderHome();
 };
 $('testKey').onclick=async()=>{
-  const key=$('s_key').value.trim();if(!key){$('keyStatus').textContent='Enter a key first';return}
+  const base=($('s_base').value.trim()||'https://api.openai.com/v1').replace(/\/+$/,'');
+  const key=$('s_key').value.trim();
+  if(!key){$('keyStatus').textContent='Enter a key first';return}
   $('keyStatus').textContent='Testing…';
   try{
-    const r=await fetch('https://api.openai.com/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:$('s_model').value,messages:[{role:'user',content:'say ok'}],max_tokens:5})});
+    const r=await fetch(base+'/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+key},body:JSON.stringify({model:$('s_model').value.trim(),messages:[{role:'user',content:'say ok'}]})});
     const d=await r.json();
-    $('keyStatus').textContent=d.error?('⚠️ '+d.error.message):'✅ Connected! Key works.';
-  }catch(e){$('keyStatus').textContent='⚠️ '+e.message}
+    $('keyStatus').textContent=d.error?('⚠️ '+(d.error.message||JSON.stringify(d.error))):'✅ Connected! '+($('s_model').value.trim())+' works.';
+  }catch(e){$('keyStatus').textContent='⚠️ '+e.message+' (for Ollama, run it with OPENAI-compatible API; for cloud providers check the base URL)'}
 };
 
 /* ---------- DATA MGMT ---------- */
