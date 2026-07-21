@@ -53,14 +53,15 @@ router.post('/import', async (req, res) => {
     if (data.settings) {
       const s = data.settings;
       await client.query(
-        `INSERT INTO settings (id, mode, api_key, model, adzuna_country, adzuna_where, adzuna_id, adzuna_key)
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO settings (id, mode, api_key, model, adzuna_country, adzuna_where, adzuna_id, adzuna_key, api_base)
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (id) DO UPDATE SET
            mode = $1, api_key = $2, model = $3, adzuna_country = $4,
-           adzuna_where = $5, adzuna_id = $6, adzuna_key = $7`,
-        [s.mode || 'manual', s.key || s.api_key || '', s.model || 'gpt-4o-mini',
+           adzuna_where = $5, adzuna_id = $6, adzuna_key = $7, api_base = $8`,
+        [s.mode || 'manual', s.key || s.api_key || '', s.model || 'gpt-5',
          s.adzuna?.country || s.adzuna_country || 'us', s.adzuna?.where || s.adzuna_where || '',
-         s.adzuna?.id || s.adzuna_id || '', s.adzuna?.key || s.adzuna_key || '']
+         s.adzuna?.id || s.adzuna_id || '', s.adzuna?.key || s.adzuna_key || '',
+         s.api_base || s.apiBase || 'https://api.openai.com/v1']
       );
     }
 
@@ -193,14 +194,15 @@ router.put('/sync', async (req, res) => {
     if (data.settings) {
       const s = data.settings;
       await client.query(
-        `INSERT INTO settings (id, mode, api_key, model, adzuna_country, adzuna_where, adzuna_id, adzuna_key)
-         VALUES (1, $1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO settings (id, mode, api_key, model, adzuna_country, adzuna_where, adzuna_id, adzuna_key, api_base)
+         VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)
          ON CONFLICT (id) DO UPDATE SET
            mode = $1, api_key = $2, model = $3, adzuna_country = $4,
-           adzuna_where = $5, adzuna_id = $6, adzuna_key = $7`,
-        [s.mode || 'manual', s.key || s.api_key || '', s.model || 'gpt-4o-mini',
+           adzuna_where = $5, adzuna_id = $6, adzuna_key = $7, api_base = $8`,
+        [s.mode || 'manual', s.key || s.api_key || '', s.model || 'gpt-5',
          s.adzuna?.country || s.adzuna_country || 'us', s.adzuna?.where || s.adzuna_where || '',
-         s.adzuna?.id || s.adzuna_id || '', s.adzuna?.key || s.adzuna_key || '']
+         s.adzuna?.id || s.adzuna_id || '', s.adzuna?.key || s.adzuna_key || '',
+         s.api_base || s.apiBase || 'https://api.openai.com/v1']
       );
     }
 

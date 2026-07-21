@@ -57,7 +57,8 @@ CREATE TABLE IF NOT EXISTS settings (
   id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
   mode TEXT DEFAULT 'manual',
   api_key TEXT DEFAULT '',
-  model TEXT DEFAULT 'gpt-4o-mini',
+  model TEXT DEFAULT 'gpt-5',
+  api_base TEXT DEFAULT 'https://api.openai.com/v1',
   adzuna_country TEXT DEFAULT 'us',
   adzuna_where TEXT DEFAULT '',
   adzuna_id TEXT DEFAULT '',
@@ -66,6 +67,9 @@ CREATE TABLE IF NOT EXISTS settings (
 
 -- Ensure exactly one settings row exists
 INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+-- Migration for existing databases: provider base URL for the AI autofill
+ALTER TABLE settings ADD COLUMN IF NOT EXISTS api_base TEXT DEFAULT 'https://api.openai.com/v1';
 
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_contacts_app_id ON contacts(app_id);

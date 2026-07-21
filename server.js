@@ -29,6 +29,7 @@ app.use('/api/contacts', require('./routes/contacts'));
 app.use('/api/materials', require('./routes/materials'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/data', require('./routes/data'));
+app.use('/api/gpt-fill', require('./routes/gptfill'));
 
 // Health check
 app.get('/api/health', (req, res) => {

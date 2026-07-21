@@ -20,23 +20,23 @@ router.get('/', async (req, res) => {
 // PUT /api/settings
 router.put('/', async (req, res) => {
   try {
-    const fields = ['mode', 'api_key', 'model', 'adzuna_country', 'adzuna_where', 'adzuna_id', 'adzuna_key'];
     const values = [
       req.body.mode || 'manual',
       req.body.api_key || req.body.key || '',
-      req.body.model || 'gpt-4o-mini',
+      req.body.model || 'gpt-5',
       req.body.adzuna_country || req.body.adzuna?.country || 'us',
       req.body.adzuna_where || req.body.adzuna?.where || '',
       req.body.adzuna_id || req.body.adzuna?.id || '',
       req.body.adzuna_key || req.body.adzuna?.key || '',
+      req.body.api_base || req.body.apiBase || 'https://api.openai.com/v1',
     ];
 
     const result = await query(
-      `INSERT INTO settings (id, mode, api_key, model, adzuna_country, adzuna_where, adzuna_id, adzuna_key)
-       VALUES (1, $1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO settings (id, mode, api_key, model, adzuna_country, adzuna_where, adzuna_id, adzuna_key, api_base)
+       VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (id) DO UPDATE SET
          mode = $1, api_key = $2, model = $3, adzuna_country = $4,
-         adzuna_where = $5, adzuna_id = $6, adzuna_key = $7
+         adzuna_where = $5, adzuna_id = $6, adzuna_key = $7, api_base = $8
        RETURNING *`,
       values
     );
