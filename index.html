@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>JobFlow — AI Job Application Cockpit</title>
+<title>JobFlow AI Job Application Cockpit</title>
 <style>
   :root{
     --bg:#0f1220; --panel:#171a2b; --panel2:#1e2238; --line:#2a2f4a;
@@ -202,7 +202,18 @@
         <div class="field"><label>Employed by us before?</label><select id="p_prev_emp"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
         <div class="field"><label>Subject to non-compete?</label><select id="p_noncompete"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
       </div>
-      <div class="row">
+
+      <h3 style="margin: 24px 0 6px; padding-top: 14px; border-top: 1px solid var(--line);">🎓 Education entries</h3>
+      <p class="hint" style="margin-top:0">Add each degree as its own entry (most recent first). Multi-section forms like Workday &amp; iCIMS will fill <b>every</b> education block — entry 1 → first block, entry 2 → second, and so on.</p>
+      <div id="eduEntries"></div>
+      <button class="btn ghost sm" id="addEdu" type="button">+ Add education</button>
+
+      <h3 style="margin: 22px 0 6px;">💼 Work experience entries</h3>
+      <p class="hint" style="margin-top:0">Add each job as its own entry (most recent first) so every work-history block fills with the right company, title and location.</p>
+      <div id="workEntries"></div>
+      <button class="btn ghost sm" id="addWork" type="button">+ Add work experience</button>
+
+      <div class="row" style="margin-top:18px">
         <button class="btn" id="saveProfile">Save profile</button>
         <button class="btn ghost" id="copyExt">Copy profile for Autofill extension</button>
         <button class="btn ghost" id="printResume">🖨 Printable resume (PDF)</button>
@@ -411,17 +422,56 @@ function goTab(v){document.querySelector('#nav button[data-v="'+v+'"]').click();
 /* ---------- PROFILE ---------- */
 const PF=['name','title','email','phone','location','linkedin','portfolio','years','summary','skills','experience','education'];
 const DEMO_F=['gender','race','veteran','disability','age18','contact_emp','sponsorship','authorized','pronouns','address1','address2','city','state','zip','country','github','website','edu_level','university','degree','major','gpa','salary','notice','source','relocate','prev_emp','noncompete'];
+// ---- Repeatable education / work entry editors ----
+const EDU_COLS=[['school','School / University'],['degree','Degree'],['major','Major / Field'],['gpa','GPA'],['city','City'],['state','State'],['country','Country']];
+const WORK_COLS=[['company','Company'],['jobTitle','Job Title'],['location','Location'],['startDate','Start (MM/YYYY)'],['endDate','End (MM/YYYY)']];
+function entryRow(cols,data){
+  const div=document.createElement('div');
+  div.className='entry-row';
+  div.style.cssText='display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr)) 30px;gap:6px;margin-bottom:8px;align-items:end;padding:8px;background:rgba(255,255,255,.03);border-radius:8px';
+  cols.forEach(([k,label])=>{
+    const w=document.createElement('div');w.className='field';w.style.margin='0';
+    const lb=document.createElement('label');lb.textContent=label;lb.style.fontSize='11px';
+    const inp=document.createElement('input');inp.dataset.k=k;inp.value=(data&&data[k])||'';inp.style.cssText='padding:6px;font-size:12px';
+    w.appendChild(lb);w.appendChild(inp);div.appendChild(w);
+  });
+  const rm=document.createElement('button');rm.className='btn ghost sm';rm.type='button';rm.textContent='✕';rm.title='Remove entry';rm.onclick=()=>div.remove();
+  div.appendChild(rm);
+  return div;
+}
+function renderEntries(containerId,cols,list){
+  const c=$(containerId);c.innerHTML='';
+  (list&&list.length?list:[{}]).forEach(e=>c.appendChild(entryRow(cols,e)));
+}
+function gatherEntries(containerId){
+  return [...$(containerId).querySelectorAll('.entry-row')].map(row=>{
+    const o={};row.querySelectorAll('input[data-k]').forEach(i=>o[i.dataset.k]=i.value.trim());
+    return o;
+  }).filter(o=>Object.values(o).some(v=>v));
+}
+$('addEdu').onclick=()=>$('eduEntries').appendChild(entryRow(EDU_COLS,{}));
+$('addWork').onclick=()=>$('workEntries').appendChild(entryRow(WORK_COLS,{}));
+
 function loadProfile(){
   const p=store.get('profile',{});
   PF.forEach(k=>{if($('p_'+k))$('p_'+k).value=p[k]||''});
   let d={}; try { d = typeof p.demographics === 'string' ? JSON.parse(p.demographics) : p.demographics||{}; } catch(e){}
   DEMO_F.forEach(k=>{if($('p_'+k))$('p_'+k).value=d[k]||''});
+  // Seed education list from the old single fields the first time, so nothing is lost
+  let eduL=Array.isArray(d.educationList)?d.educationList:[];
+  if(!eduL.length && (d.university||d.degree||d.major||d.gpa)) eduL=[{school:d.university||'',degree:d.degree||'',major:d.major||'',gpa:d.gpa||''}];
+  renderEntries('eduEntries',EDU_COLS,eduL);
+  renderEntries('workEntries',WORK_COLS,Array.isArray(d.workList)?d.workList:[]);
 }
 $('saveProfile').onclick=()=>{
   const p={};
   PF.forEach(k=>p[k]=$('p_'+k).value.trim());
   const d={};
   DEMO_F.forEach(k=>d[k]=$('p_'+k).value.trim());
+  d.educationList=gatherEntries('eduEntries');
+  d.workList=gatherEntries('workEntries');
+  // keep the single edu fields mirrored to entry 1 for the printable resume / fallback
+  if(d.educationList[0]){d.university=d.educationList[0].school||d.university;d.degree=d.educationList[0].degree||d.degree;d.major=d.educationList[0].major||d.major;d.gpa=d.educationList[0].gpa||d.gpa;}
   p.demographics = JSON.stringify(d);
   store.set('profile',p);
   $('profileSaved').textContent='✓ Saved '+new Date().toLocaleTimeString();toast('Profile saved');renderHome();
