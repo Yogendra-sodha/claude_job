@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "JobFlow Autofill v2",
-  "version": "2.6.0",
-  "description": "Section-aware autofill for Workday, Greenhouse, Lever, iCIMS, Ashby and career pages. Won't put your name in Company/School/Referral fields or your home address in Education.",
+  "version": "2.7.0",
+  "description": "Section-aware autofill for Workday, Greenhouse, Lever, iCIMS, Ashby and career pages, with main-world value setting for reliable React/Angular fills.",
   "permissions": [],
   "host_permissions": ["*://*/*"],
   "action": {
@@ -10,6 +10,13 @@
     "default_title": "JobFlow Autofill"
   },
   "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["mainworld.js"],
+      "all_frames": true,
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
     {
       "matches": ["<all_urls>"],
       "css": ["content.css"],

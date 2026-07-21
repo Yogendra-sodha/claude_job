@@ -323,6 +323,21 @@ function containerLabel(el) {
 // =============================================
 function setVal(el, v) {
   if (!v) return;
+  el.style.outline = '2px solid #3ecf8e';
+  // Prefer setting the value in the page's own JS context (main world) so the
+  // site's framework treats it as genuine input. Falls back to isolated-world
+  // setting if the main-world helper isn't present or didn't handle it.
+  if (document.documentElement.getAttribute('data-jf-mainworld') === '1') {
+    const token = 'jf' + Math.random().toString(36).slice(2);
+    el.setAttribute('data-jf-token', token);
+    document.dispatchEvent(new CustomEvent('__jf_set', { detail: { token, value: String(v) } }));
+    if (el.getAttribute('data-jf-token') !== token) return;  // main world handled it (removed the tag)
+    el.removeAttribute('data-jf-token');                     // not handled → fall through
+  }
+  isolatedSetVal(el, v);
+}
+
+function isolatedSetVal(el, v) {
   const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const desc = Object.getOwnPropertyDescriptor(proto, 'value');
   const lastValue = el.value;
@@ -331,7 +346,6 @@ function setVal(el, v) {
   if (tracker) tracker.setValue(lastValue);
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
-  el.style.outline = '2px solid #3ecf8e';
 }
 
 function selectOption(sel, val, kind) {
