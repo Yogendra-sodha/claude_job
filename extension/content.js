@@ -303,26 +303,35 @@ async function fillCustomDropdowns(P, filledKeys, entryCount) {
     jfDoneQuestions.add(sig);   // mark on attempt (even if no option matches) so we never re-open it
     const kind = JFMatcher.kindFor(key);
 
-    t.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-    t.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-    if (typeof t.click === 'function') t.click();
-    await sleep(350);
+    // Each dropdown is isolated: if opening/selecting one throws (often the
+    // site's OWN click/keydown handlers throwing, not us), skip it and move on
+    // instead of aborting the whole pass.
+    try {
+      t.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      t.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      if (typeof t.click === 'function') t.click();
+      await sleep(350);
 
-    const opts = deepQueryAll('[role="option"], li[class*="option"], div[class*="option"], [class*="select__option"]')
-      .filter((o) => { const b = o.getBoundingClientRect(); return b.width > 0 && b.height > 0; });
-    const hit = opts.find((o) => JFMatcher.matchOption(val, (o.textContent || '').toLowerCase(), kind));
-    if (hit) {
-      hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-      if (typeof hit.click === 'function') hit.click();
-      t.style.outline = '2px solid #3ecf8e';
-      if (JFMatcher.SINGLE_FILL.has(key)) filledKeys.add(key);
-      n++;
-      await sleep(200);
-    } else {
-      t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      if (document.body) document.body.click();
-      await sleep(80);
+      const opts = deepQueryAll('[role="option"], li[class*="option"], div[class*="option"], [class*="select__option"]')
+        .filter((o) => { const b = o.getBoundingClientRect(); return b.width > 0 && b.height > 0; });
+      const hit = opts.find((o) => JFMatcher.matchOption(val, (o.textContent || '').toLowerCase(), kind));
+      if (hit) {
+        hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+        if (typeof hit.click === 'function') hit.click();
+        t.style.outline = '2px solid #3ecf8e';
+        if (JFMatcher.SINGLE_FILL.has(key)) filledKeys.add(key);
+        n++;
+        await sleep(200);
+      } else {
+        // Close the open menu gently. Do NOT click document.body — that runs
+        // the site's global handlers and surfaces their errors as ours.
+        t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+        if (typeof t.blur === 'function') t.blur();
+        await sleep(80);
+      }
+    } catch (err) {
+      console.warn('[JobFlow] dropdown skipped:', err && err.message);
     }
   }
   return n;
