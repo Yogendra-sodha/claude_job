@@ -65,6 +65,12 @@
 
     if (section === 'referral') return 'referrerName';
 
+    // Consent / privacy / acknowledgement checkboxes (borrowed from Jobright's
+    // keyword approach) — required on most applications to submit.
+    if (isChoice && /\bagree\b|\baccept\b|acknowledge|\bconsent\b|privacy (policy|notice|statement)|\bterms\b|certify that|read and understand|processing of my|i authorize (the|you|us|this)/.test(hay)) {
+      return 'consent';
+    }
+
     // Demographic ANSWERS only ever live in a dropdown/radio/checkbox. A text
     // input inside an EEO form is a name/date/ID field → fall through to personal.
     if (section === 'eeo' && isChoice) {
@@ -184,6 +190,8 @@
       case 'eduState':
       case 'eduCountry':
         return '';
+      case 'consent':
+        return 'yes';   // checking an acknowledgement box
       default:
         return P[key] != null ? String(P[key]) : '';
     }

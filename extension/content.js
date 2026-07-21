@@ -211,10 +211,14 @@ async function fillForm(profile, letter) {
     if (!key) continue;
     const val = JFMatcher.resolveValue(key, P);
     if (!val) continue;
-    if (JFMatcher.matchOption(val, f.optionText, JFMatcher.kindFor(key))) {
+    // A consent/acknowledgement checkbox is a single box to tick — no yes/no
+    // option to match against.
+    const isConsent = key === 'consent' && el.type === 'checkbox';
+    if (isConsent || JFMatcher.matchOption(val, f.optionText, JFMatcher.kindFor(key))) {
       el.click();
       el.dispatchEvent(new Event('change', { bubbles: true }));
       el.dispatchEvent(new Event('input', { bubbles: true }));
+      if (el.type === 'checkbox') el.style.outline = '2px solid #3ecf8e';
       n++;
     }
   }
