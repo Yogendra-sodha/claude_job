@@ -37,7 +37,8 @@
     const cont = words(f.section);
     const notChoice = f.type !== 'radio' && f.type !== 'checkbox' && f.tag !== 'select';
 
-    if (/\breferr/.test(self) && /(name|specify|who|whom|please)/.test(self) && notChoice) return 'referral';
+    // A field about the REFERRER (their name, email, contact) — never the applicant's.
+    if (/\breferr/.test(self) && /(name|e ?mail|specify|who|whom|please|contact|phone)/.test(self) && notChoice) return 'referral';
     if (/gender|\bsex\b|\brace\b|ethnic|hispanic|latino|veteran|disab|self ?identif|\beeo\b|demographic/.test(self)) return 'eeo';
     if (/education|\bschool\b|universit|college|institution|\bdegree\b|field of study|discipline|\bmajor\b|\bgpa\b|grade (average|point)|overall result|graduat|academic|candprofile|alma mater/.test(self)) return 'education';
     if (/work ?history|work experience|employment|\bemployer\b|companyname|\bcompany\b|\borg\b|current company|job title|role description|professional experience|currently work|most recent (company|title|employer|position)/.test(self)) return 'work';
