@@ -77,6 +77,9 @@ function jfLooksLikeForm() {
 let jfBtn = null;
 let jfBusy = false;        // suppress observer-triggered re-runs while we're clicking around
 let jfTotalFilled = 0;     // cumulative across auto+manual runs on this page
+let jfIdleRuns = 0;        // consecutive auto-runs that filled nothing new
+let jfCooldownUntil = 0;   // ignore mutations right after our own fill
+const jfDoneQuestions = new Set();  // dropdown questions already handled (survives React re-render)
 
 function jfSetBtn(txt, revert) {
   if (!jfBtn) return;
@@ -98,6 +101,7 @@ async function jfRun(manual) {
     }
     const n = await fillForm(data.profile, data.letter || '');
     jfTotalFilled += n;
+    if (!manual) jfIdleRuns = (n > 0) ? 0 : (jfIdleRuns + 1);   // track no-progress auto-runs
     if (n > 0) {
       jfSetBtn('✅ ' + n, true);
       jfFlash((manual ? 'Filled ' : 'Auto-filled ') + n + ' field' + (n > 1 ? 's' : '') + ' (green). Review before submitting.', '#3ecf8e');
@@ -122,6 +126,7 @@ async function jfRun(manual) {
     return 0;
   } finally {
     jfBusy = false;
+    jfCooldownUntil = Date.now() + 1500;   // let our own DOM churn settle before re-checking
     if (jfBtn) jfBtn.classList.remove('filling');
   }
 }
@@ -158,14 +163,22 @@ try {
 
   // ---- AUTO-FILL: on load, and again whenever a new step/modal renders ----
   let autoTimer = null;
+  let jfObs = null;
   const scheduleAuto = () => {
     if (jfBusy) return; // our own filling mutates the DOM — don't re-trigger
+    // Stop auto-running once several passes in a row have filled nothing new —
+    // that means we're chasing our own re-render churn, not real new fields.
+    if (jfIdleRuns >= 4) { if (jfObs) { jfObs.disconnect(); jfObs = null; } return; }
     clearTimeout(autoTimer);
-    autoTimer = setTimeout(() => { if (!jfBusy && jfLooksLikeForm()) jfRun(false); }, 1000);
+    autoTimer = setTimeout(() => {
+      if (jfBusy) return;
+      if (Date.now() < jfCooldownUntil) { scheduleAuto(); return; } // still cooling down
+      if (jfLooksLikeForm()) jfRun(false);
+    }, 1200);
   };
   setTimeout(scheduleAuto, 1200);
-  const obs = new MutationObserver(scheduleAuto);
-  obs.observe(document.documentElement, { childList: true, subtree: true });
+  jfObs = new MutationObserver(scheduleAuto);
+  jfObs.observe(document.documentElement, { childList: true, subtree: true });
 } catch (initErr) {
   console.warn('[JobFlow] Init skipped:', initErr.message);
 }
@@ -264,6 +277,7 @@ async function fillCustomDropdowns(P, filledKeys, entryCount) {
   let n = 0;
   const triggers = deepQueryAll('[role="combobox"], [aria-haspopup="listbox"]');
   const seen = new Set();
+  const sigCount = {};   // per-run occurrence of each question -> distinguishes repeated blocks
   for (const t of triggers) {
     if (seen.has(t)) continue; seen.add(t);
     if (t.closest('#jf-floating-btn')) continue;
@@ -279,6 +293,14 @@ async function fillCustomDropdowns(P, filledKeys, entryCount) {
     const val = valueFor(key, P, entryCount);
     if (!val) continue;
     if (JFMatcher.SINGLE_FILL.has(key) && filledKeys.has(key)) continue;
+    // Dedup by the question text (not the element) — React replaces the trigger
+    // element on every re-render, so an element-keyed guard would loop forever.
+    // Include an occurrence index so repeated blocks (2 "School"s) stay distinct.
+    const sigBase = key + '|' + (f.label || f.idname || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+    const occ = (sigCount[sigBase] = (sigCount[sigBase] || 0) + 1);
+    const sig = sigBase + '#' + occ;
+    if (jfDoneQuestions.has(sig)) continue;
+    jfDoneQuestions.add(sig);   // mark on attempt (even if no option matches) so we never re-open it
     const kind = JFMatcher.kindFor(key);
 
     t.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
