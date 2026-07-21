@@ -162,10 +162,27 @@
   // --------------------------------------------------------------- RESOLVE
   // Which keys are "one entry only" — filling the same value into every
   // repeated block (Bachelor's AND Master's) is the exact bug we're killing.
-  const SINGLE_FILL = new Set([
-    'eduSchool', 'eduDegree', 'eduMajor', 'eduGpa', 'eduCity', 'eduState', 'eduCountry',
-    'workTitle', 'workCompany', 'workLocation', 'website',
-  ]);
+  // Education/work keys are now filled per-entry (the i-th block from the i-th
+  // resume entry), so they are NOT single-fill. Only 'website' stays single.
+  const SINGLE_FILL = new Set(['website']);
+
+  // Which keys are resolved from an education / work ENTRY (array element).
+  const EDU_KEYS = { eduSchool: 'school', eduDegree: 'degree', eduMajor: 'major', eduGpa: 'gpa', eduCity: 'city', eduState: 'state', eduCountry: 'country' };
+  const WORK_KEYS = { workCompany: 'company', workTitle: 'jobTitle', workLocation: 'location' };
+
+  // Resolve an education/work key from a specific entry object. Returns '' when
+  // there is no such entry (e.g. a 3rd education block but only 2 entries).
+  function resolveEntry(key, entry) {
+    if (!entry) return '';
+    if (EDU_KEYS[key]) return String(entry[EDU_KEYS[key]] || '');
+    if (WORK_KEYS[key]) {
+      if (key === 'workTitle') return String(entry.jobTitle || entry.title || '');
+      return String(entry[WORK_KEYS[key]] || '');
+    }
+    return '';
+  }
+  const isEntryKey = (key) => !!(EDU_KEYS[key] || WORK_KEYS[key]);
+  const entryListFor = (key, P) => (EDU_KEYS[key] ? P.educationList : P.workList) || [];
 
   // Kind hint for option/radio matching
   const YESNO_KEYS = { authorized: 1, sponsorship: 1, relocate: 1, age18: 1, hispanic: 1, contact_emp: 1, prev_emp: 1, noncompete: 1 };
@@ -210,7 +227,21 @@
     const parts = full.split(/\s+/);
     let hispanic = d.hispanic || '';
     if (!hispanic && d.race) hispanic = /not hispanic/i.test(d.race) ? 'no' : (/hispanic|latino/i.test(d.race) ? 'yes' : '');
+
+    // Multi-entry resume data lives in the demographics blob. Fall back to a
+    // single synthesized entry from the old flat fields for backward compat.
+    let educationList = Array.isArray(d.educationList) ? d.educationList.filter((e) => e && (e.school || e.degree || e.major)) : [];
+    let workList = Array.isArray(d.workList) ? d.workList.filter((e) => e && (e.company || e.jobTitle || e.title)) : [];
+    if (!educationList.length && (d.university || d.degree || d.major || d.gpa)) {
+      educationList = [{ school: d.university || '', degree: d.degree || '', major: d.major || '', gpa: d.gpa || '', city: '', state: '', country: '' }];
+    }
+    if (!workList.length && profile.title) {
+      workList = [{ company: '', jobTitle: profile.title || '', location: '', startDate: '', endDate: '', description: '' }];
+    }
+
     return {
+      educationList: educationList,
+      workList: workList,
       firstName: parts[0] || '',
       lastName: parts.slice(1).join(' ') || '',
       fullName: full,
@@ -312,7 +343,7 @@
     return -1;
   }
 
-  const api = { classify, detectSection, detectKey, resolveValue, buildProfile, matchOption, pickOption, kindFor, SINGLE_FILL, words };
+  const api = { classify, detectSection, detectKey, resolveValue, resolveEntry, isEntryKey, entryListFor, buildProfile, matchOption, pickOption, kindFor, SINGLE_FILL, words };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.JFMatcher = api;
 })(typeof self !== 'undefined' ? self : this);

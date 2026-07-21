@@ -21,10 +21,17 @@ const P = M.buildProfile({
   years: '4',
   demographics: JSON.stringify({
     address1: '123 Main St', city: 'Jersey City', state: 'New Jersey', zip: '07307', country: 'United States',
-    university: 'NJIT', degree: "Master's", major: 'Data Science', gpa: '3.8',
     gender: 'Male', race: 'Asian (Not Hispanic or Latino)', veteran: 'no', disability: 'no',
     authorized: 'yes', sponsorship: 'no', relocate: 'yes', salary: '150000', notice: '2 weeks',
     source: 'LinkedIn',
+    educationList: [
+      { school: 'NJIT', degree: "Master's", major: 'Data Science', gpa: '3.8', city: 'Newark', state: 'New Jersey', country: 'United States' },
+      { school: 'Gujarat University', degree: "Bachelor's", major: 'Computer Engineering', gpa: '3.6', city: 'Ahmedabad', state: 'Gujarat', country: 'India' },
+    ],
+    workList: [
+      { company: 'Aluf Plastics', jobTitle: 'Data Engineer', location: 'Orangeburg, NY', startDate: '03/2024', endDate: '', description: 'Built pipelines' },
+      { company: 'Prev Corp', jobTitle: 'Data Analyst', location: 'Remote', startDate: '10/2019', endDate: '10/2021', description: 'Reporting' },
+    ],
   }),
 });
 
@@ -33,12 +40,12 @@ function toField(rec) {
   const specific = rec.labelFor || rec.labelWrap || rec.ariaLabel || rec.placeholder || rec.labelledby || '';
   const container = rec.containerLabel || '';
   const isChoice = rec.type === 'radio' || rec.type === 'checkbox';
+  const shortOpt = specific && specific.split(/\s+/).length <= 3;
   return {
     idname: [rec.name, rec.id, rec.automationId, rec.testId].filter(Boolean).join(' '),
-    // For radios/checkboxes the "question" lives in the container and the
-    // specific label is just the option ("Yes"); for everything else the
-    // specific label wins and the container is only a section hint.
-    label: isChoice ? (container || specific) : (specific || container),
+    // A short choice label ("Yes") is an option -> question is in the container;
+    // a full-sentence choice ("I currently work here") is its own question.
+    label: isChoice ? (shortOpt ? (container || specific) : specific) : (specific || container),
     section: container,
     optionText: isChoice ? specific : '',
     type: rec.type,
@@ -69,13 +76,21 @@ for (const file of files) {
   const data = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
   const fields = (data.fields || []).filter((f) => f.visible && !['button', 'a'].includes(f.tag) && !['submit', 'hidden', 'password', 'file'].includes(f.type));
   const filledOnce = new Set();
+  const entryCount = {};
   let filled = 0;
   const lines = [];
   for (const rec of fields) {
     const f = toField(rec);
     const { section, key } = M.classify(f);
-    let value = M.resolveValue(key, P);
-    // simulate single-fill-per-key (repeated education/work blocks)
+    // education/work keys resolve from the i-th resume entry (mirrors content.js valueFor)
+    let value;
+    if (M.isEntryKey(key)) {
+      const i = entryCount[key] || 0; entryCount[key] = i + 1;
+      value = M.resolveEntry(key, M.entryListFor(key, P)[i]);
+    } else {
+      value = M.resolveValue(key, P);
+    }
+    // simulate single-fill-per-key (e.g. website)
     if (value && M.SINGLE_FILL.has(key)) {
       if (filledOnce.has(key)) { value = ''; }
       else filledOnce.add(key);

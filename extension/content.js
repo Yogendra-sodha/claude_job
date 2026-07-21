@@ -157,6 +157,20 @@ try {
   console.warn('[JobFlow] Init skipped:', initErr.message);
 }
 
+// Resolve a field's value. Education/work keys pull from the i-th resume entry,
+// where i = how many times we've already seen that key (fields appear in entry
+// order), so the 2nd "School" fills education entry 2, etc. entryCount is shared
+// across the text/select and custom-dropdown passes.
+function valueFor(key, P, entryCount) {
+  if (JFMatcher.isEntryKey(key)) {
+    const i = entryCount[key] || 0;
+    entryCount[key] = i + 1;
+    const list = JFMatcher.entryListFor(key, P);
+    return JFMatcher.resolveEntry(key, list[i]);
+  }
+  return JFMatcher.resolveValue(key, P);
+}
+
 // =============================================
 // MAIN FILL LOGIC — driven by JFMatcher (extension/matcher.js),
 // which is verified against real captured forms in ats-samples/test.js.
@@ -168,7 +182,8 @@ async function fillForm(profile, letter) {
   }
   const P = JFMatcher.buildProfile(profile);
   P.coverLetter = letter || '';
-  const filledKeys = new Set();   // enforce single-fill for repeated edu/work blocks
+  const filledKeys = new Set();   // enforce single-fill for e.g. website
+  const entryCount = {};          // per-key occurrence -> maps to resume entry index
   let n = 0;
 
   // ---- 1) TEXT INPUTS, TEXTAREAS, NATIVE SELECTS ----
@@ -189,7 +204,7 @@ async function fillForm(profile, letter) {
     const f = describe(el);
     const { key } = JFMatcher.classify(f);
     if (!key) continue;
-    const val = JFMatcher.resolveValue(key, P);
+    const val = valueFor(key, P, entryCount);
     if (!val) continue;
     if (JFMatcher.SINGLE_FILL.has(key)) { if (filledKeys.has(key)) continue; filledKeys.add(key); }
 
@@ -209,7 +224,7 @@ async function fillForm(profile, letter) {
     const f = describe(el);
     const { key } = JFMatcher.classify(f);
     if (!key) continue;
-    const val = JFMatcher.resolveValue(key, P);
+    const val = valueFor(key, P, entryCount);
     if (!val) continue;
     // A consent/acknowledgement checkbox is a single box to tick — no yes/no
     // option to match against.
@@ -224,7 +239,7 @@ async function fillForm(profile, letter) {
   }
 
   // ---- 3) CUSTOM DROPDOWNS (Greenhouse/Lever/Workday comboboxes) ----
-  try { n += await fillCustomDropdowns(P, filledKeys); }
+  try { n += await fillCustomDropdowns(P, filledKeys, entryCount); }
   catch (e) { console.warn('[JobFlow] custom dropdown pass failed:', e); }
 
   return n;
@@ -232,7 +247,7 @@ async function fillForm(profile, letter) {
 
 // Open a custom combobox, wait for its listbox, click the matching option.
 // Conservative: presses Escape and leaves it alone if nothing confidently matches.
-async function fillCustomDropdowns(P, filledKeys) {
+async function fillCustomDropdowns(P, filledKeys, entryCount) {
   let n = 0;
   const triggers = deepQueryAll('[role="combobox"], [aria-haspopup="listbox"]');
   const seen = new Set();
@@ -248,7 +263,7 @@ async function fillCustomDropdowns(P, filledKeys) {
     const f = describe(t);
     const { key } = JFMatcher.classify(f);
     if (!key) continue;
-    const val = JFMatcher.resolveValue(key, P);
+    const val = valueFor(key, P, entryCount);
     if (!val) continue;
     if (JFMatcher.SINGLE_FILL.has(key) && filledKeys.has(key)) continue;
     const kind = JFMatcher.kindFor(key);
@@ -285,10 +300,13 @@ function describe(el) {
   const isChoice = el.type === 'radio' || el.type === 'checkbox';
   const spec = specificLabel(el);
   const cont = containerLabel(el);
+  // A choice whose own label is SHORT ("Yes", "Male") is an option — its
+  // question lives in the container. A choice with a full-sentence label
+  // ("I currently work here", "I agree to…") is its own question.
+  const shortOpt = spec && spec.split(/\s+/).length <= 3;
   return {
     idname: [el.name, el.id, el.getAttribute('data-automation-id'), el.getAttribute('data-testid'), el.getAttribute('data-field-name')].filter(Boolean).join(' '),
-    // radios/checkboxes: question is in the container, option is the specific label
-    label: isChoice ? (cont || spec) : (spec || cont),
+    label: isChoice ? (shortOpt ? (cont || spec) : spec) : (spec || cont),
     section: cont,
     optionText: isChoice ? spec : '',
     type: el.type,
