@@ -6,3 +6,8 @@ node_modules/
 # pre-filled values) — keep them local, never push. capture.js/test.js/README
 # in ats-samples/ ARE tracked; the *.json captures are not.
 ats-samples/*.json
+
+# Third-party reference code (Jobright's own extension) — studied locally only,
+# never redistribute.
+ats-samples/joby_autofill.js
+train_data/
