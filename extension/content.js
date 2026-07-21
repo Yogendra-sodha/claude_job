@@ -99,7 +99,10 @@ async function jfRun(manual) {
       jfSetBtn('⚡');
       return 0;
     }
-    const n = await fillForm(data.profile, data.letter || '');
+    let n = await fillForm(data.profile, data.letter || '');
+    // AI phase runs only on a manual ⚡ click (never on every auto-fill tick),
+    // so it stays under your control and never spends silently.
+    if (manual) { try { n += await aiFill(); } catch (e) { console.warn('[JobFlow] AI phase:', e && e.message); } }
     jfTotalFilled += n;
     if (!manual) jfIdleRuns = (n > 0) ? 0 : (jfIdleRuns + 1);   // track no-progress auto-runs
     if (n > 0) {
@@ -432,4 +435,146 @@ function selectOption(sel, val, kind) {
     return true;
   }
   return false;
+}
+
+// Open a custom combobox and click the option matching `val`. Reusable by the
+// rule pass and the AI pass. Returns true if it selected something.
+async function openAndPickOption(t, val, kind, outline) {
+  try {
+    const control = t.closest('[class*="control"]') || t.closest('[class*="select__"]') || t.parentElement || t;
+    if (typeof t.focus === 'function') t.focus();
+    control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+    control.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+    if (typeof control.click === 'function' && control !== t) control.click();
+    t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    await sleep(350);
+    const collect = () => deepQueryAll('[role="option"], li[class*="option"], div[class*="option"], [class*="select__option"]')
+      .filter((o) => { const b = o.getBoundingClientRect(); return b.width > 0 && b.height > 0; });
+    let opts = collect();
+    if (!opts.length && t.tagName === 'INPUT') {
+      const term = String(val).replace(/[^a-zA-Z ]/g, ' ').trim().split(/\s+/)[0];
+      if (term && term.length >= 3) { isolatedSetVal(t, term); await sleep(350); opts = collect(); }
+    }
+    const hit = opts.find((o) => JFMatcher.matchOption(val, (o.textContent || '').toLowerCase(), kind))
+      || opts.find((o) => (o.textContent || '').toLowerCase().trim() === String(val).toLowerCase().trim());
+    if (hit) {
+      hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      if (typeof hit.click === 'function') hit.click();
+      t.style.outline = '2px solid ' + (outline || '#3ecf8e');
+      await sleep(150);
+      return true;
+    }
+    t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    if (typeof t.blur === 'function') t.blur();
+    return false;
+  } catch (e) { return false; }
+}
+
+// =============================================
+// AI PHASE — answer the questions the rules couldn't (manual ⚡ only, so it
+// never spends on every auto-fill tick). Collects leftover question fields,
+// sends them to the local server (which calls the configured LLM), fills back.
+// =============================================
+const jfAiAsked = new Set();   // question labels already sent this page (no repeats)
+// Keys the rules own — never hand these to the AI.
+const AI_EXCLUDE = /^(firstName|lastName|fullName|email|phone|linkedin|github|website|home|edu|work|referrerName|consent|pronouns|location)/;
+
+async function aiFill() {
+  if (typeof JFMatcher === 'undefined') return 0;
+  const questions = [];
+  const targets = [];
+  let tok = 0;
+  const add = (el, type, label, options, els) => {
+    const t = 'q' + (tok++);
+    const q = { id: t, label: label.slice(0, 300), type };
+    if (options && options.length) q.options = options.slice(0, 30);
+    questions.push(q);
+    targets.push({ token: t, el, els, type });
+    if (els) els.forEach((e) => e.setAttribute('data-jf-q', t)); else el.setAttribute('data-jf-q', t);
+  };
+  const eligible = (el) => { if (el.disabled || el.readOnly) return false; const r = el.getBoundingClientRect(); return r.width > 0 || r.height > 0; };
+  const ruleKeyExcluded = (el) => { const { key } = JFMatcher.classify(describe(el)); return key && AI_EXCLUDE.test(key); };
+
+  // Open-ended text: empty textareas, or text inputs whose label is a real question
+  deepQueryAll('textarea, input[type=text], input:not([type])').forEach((el) => {
+    if (!eligible(el) || (el.value && el.value.trim())) return;
+    if (el.getAttribute('role') === 'combobox' || el.getAttribute('data-jf-q')) return;
+    if (ruleKeyExcluded(el)) return;
+    const label = (describe(el).label || '').trim();
+    const isQ = el.tagName === 'TEXTAREA' || /\?/.test(label) || label.split(/\s+/).length >= 6;
+    if (!label || label.length < 6 || !isQ) return;
+    add(el, el.tagName === 'TEXTAREA' ? 'textarea' : 'text', label);
+  });
+  // Native selects still unset
+  deepQueryAll('select').forEach((el) => {
+    if (!eligible(el) || el.selectedIndex > 0 || el.getAttribute('data-jf-q')) return;
+    if (ruleKeyExcluded(el)) return;
+    const label = (describe(el).label || '').trim();
+    const opts = [...el.options].map((o) => o.text.trim()).filter(Boolean);
+    if (!label || opts.length < 2) return;
+    add(el, 'select', label, opts);
+  });
+  // Custom comboboxes still on the placeholder
+  deepQueryAll('[role="combobox"], [aria-haspopup="listbox"]').forEach((el) => {
+    if (!eligible(el) || el.getAttribute('data-jf-q')) return;
+    if (el.getAttribute('aria-disabled') === 'true' || el.disabled) return;
+    const cur = ((el.value || '') + ' ' + (el.textContent || '')).trim();
+    if (cur && !/select|choose|make a selection|please|^[-–—\s.]*$/i.test(cur)) return;
+    if (ruleKeyExcluded(el)) return;
+    const label = (describe(el).label || '').trim();
+    if (!label) return;
+    add(el, 'combobox', label);
+  });
+  // Radio groups with nothing chosen
+  const groups = {};
+  deepQueryAll('input[type="radio"]').forEach((el) => {
+    if (!eligible(el)) return;
+    const q = (describe(el).label || '').trim();
+    if (!q) return;
+    (groups[q] = groups[q] || []).push(el);
+  });
+  Object.keys(groups).forEach((q) => {
+    const els = groups[q];
+    if (els.some((e) => e.checked) || els[0].getAttribute('data-jf-q')) return;
+    if (ruleKeyExcluded(els[0])) return;
+    const opts = els.map((e) => (describe(e).optionText || e.value || '').trim()).filter(Boolean);
+    if (q.length < 6 || !opts.length) return;
+    add(null, 'radio', q, opts, els);
+  });
+
+  const fresh = questions.filter((q) => !jfAiAsked.has(q.label));
+  if (!fresh.length) return 0;
+  fresh.forEach((q) => jfAiAsked.add(q.label));
+
+  jfFlash('Asking AI to answer ' + fresh.length + ' question' + (fresh.length > 1 ? 's' : '') + '…', '#8b7dff');
+  let resp;
+  try { resp = await chrome.runtime.sendMessage({ action: 'gptFill', questions: fresh }); }
+  catch (e) { jfFlash('AI call failed — is the JobFlow server running? ' + e.message, '#ff4d4f'); return 0; }
+  if (!resp || !resp.success) { jfFlash('AI error: ' + ((resp && resp.error) || 'unknown'), '#ff4d4f'); return 0; }
+  const data = resp.data || {};
+  if (data.disabled) { jfFlash('Turn on API mode + add a key in Settings → AI to let it answer questions.', '#f59e0b'); return 0; }
+  if (data.error) { jfFlash('AI: ' + data.error, '#ff4d4f'); return 0; }
+
+  let filled = 0;
+  for (const a of (data.answers || [])) {
+    if (!a || !a.answer || !String(a.answer).trim()) continue;
+    const tgt = targets.find((x) => x.token === a.id);
+    if (!tgt) continue;
+    const ans = String(a.answer);
+    try {
+      if (tgt.type === 'text' || tgt.type === 'textarea') { setVal(tgt.el, ans); filled++; }
+      else if (tgt.type === 'select') { if (selectOption(tgt.el, ans, null)) filled++; }
+      else if (tgt.type === 'combobox') { if (await openAndPickOption(tgt.el, ans, null, '#8b7dff')) filled++; }
+      else if (tgt.type === 'radio') {
+        const hit = tgt.els.find((e) => {
+          const ot = (describe(e).optionText || e.value || '').toLowerCase();
+          return JFMatcher.matchOption(ans, ot, null) || ot === ans.toLowerCase() || ot.includes(ans.toLowerCase());
+        });
+        if (hit) { hit.click(); hit.dispatchEvent(new Event('change', { bubbles: true })); hit.style.outline = '2px solid #8b7dff'; filled++; }
+      }
+    } catch (e) { /* skip this answer */ }
+  }
+  if (filled > 0) jfFlash('✨ AI answered ' + filled + ' question' + (filled > 1 ? 's' : '') + ' (purple) — review them before submitting!', '#8b7dff');
+  return filled;
 }

@@ -20,6 +20,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Keep message channel open for async response
   }
 
+  if (request.action === 'gptFill') {
+    // Proxy the AI question-answering call (same loopback/PNA reason as above).
+    fetch('http://127.0.0.1:3000/api/gpt-fill', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questions: request.questions || [] }),
+    })
+      .then(res => res.json())
+      .then(data => sendResponse({ success: true, data }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
   if (request.action === 'fillAllFrames' && sender.tab && sender.tab.id != null) {
     // Delivered to the content script in EVERY frame of the tab
     chrome.tabs.sendMessage(sender.tab.id, { action: 'jf-fill', nonce: request.nonce })
