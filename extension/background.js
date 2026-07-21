@@ -6,9 +6,13 @@
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'fetchExtensionData') {
-    fetch('http://localhost:3000/api/data/extension')
+    // Fetch from the background (service worker) context, NOT the page — a public
+    // site like job-boards.greenhouse.io is blocked by Chrome's Private Network
+    // Access policy from reaching 127.0.0.1 directly, but the extension can.
+    // Use 127.0.0.1 to match the server's bind address (avoids localhost->::1).
+    fetch('http://127.0.0.1:3000/api/data/extension')
       .then(res => {
-        if (!res.ok) throw new Error('Server not OK');
+        if (!res.ok) throw new Error('server returned ' + res.status);
         return res.json();
       })
       .then(data => sendResponse({ success: true, data }))

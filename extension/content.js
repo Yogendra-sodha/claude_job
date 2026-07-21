@@ -45,9 +45,22 @@ function jfFlash(msg, color) {
 let JF_DATA = null;
 async function jfGetData() {
   if (JF_DATA) return JF_DATA;
-  const res = await fetch(JF_API);
-  if (!res.ok) throw new Error('Server returned ' + res.status);
-  JF_DATA = await res.json();
+  // Ask the background service worker to fetch — a page on a public origin
+  // (Greenhouse, Workday…) is blocked by Chrome's Private Network Access policy
+  // from calling 127.0.0.1 directly, but the extension background is not.
+  let resp;
+  try {
+    resp = await chrome.runtime.sendMessage({ action: 'fetchExtensionData' });
+  } catch (e) {
+    // Extension context invalidated (e.g. just reloaded) — fall back to a direct
+    // fetch, which still works on same-origin/localhost pages like the app itself.
+    const res = await fetch(JF_API);
+    if (!res.ok) throw new Error('Server returned ' + res.status);
+    JF_DATA = await res.json();
+    return JF_DATA;
+  }
+  if (!resp || !resp.success) throw new Error((resp && resp.error) || 'server unreachable');
+  JF_DATA = resp.data;
   return JF_DATA;
 }
 
