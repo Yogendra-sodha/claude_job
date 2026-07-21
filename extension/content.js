@@ -307,13 +307,25 @@ async function fillCustomDropdowns(P, filledKeys, entryCount) {
     // site's OWN click/keydown handlers throwing, not us), skip it and move on
     // instead of aborting the whole pass.
     try {
-      t.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      t.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-      if (typeof t.click === 'function') t.click();
+      // Open the widget. react-select (Greenhouse/Lever) only opens when you hit
+      // its CONTROL container or press ArrowDown — mousedown on the hidden input
+      // does nothing, which is why demographics weren't filling.
+      const control = t.closest('[class*="control"]') || t.closest('[class*="select__"]') || t.parentElement || t;
+      if (typeof t.focus === 'function') t.focus();
+      control.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      control.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+      if (typeof control.click === 'function' && control !== t) control.click();
+      t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
       await sleep(350);
 
-      const opts = deepQueryAll('[role="option"], li[class*="option"], div[class*="option"], [class*="select__option"]')
+      const collect = () => deepQueryAll('[role="option"], li[class*="option"], div[class*="option"], [class*="select__option"]')
         .filter((o) => { const b = o.getBoundingClientRect(); return b.width > 0 && b.height > 0; });
+      let opts = collect();
+      // If the menu didn't render, type the first word to filter it open (react-select)
+      if (!opts.length && t.tagName === 'INPUT') {
+        const term = String(val).replace(/[^a-zA-Z ]/g, ' ').trim().split(/\s+/)[0];
+        if (term && term.length >= 3) { isolatedSetVal(t, term); await sleep(350); opts = collect(); }
+      }
       const hit = opts.find((o) => JFMatcher.matchOption(val, (o.textContent || '').toLowerCase(), kind));
       if (hit) {
         hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
