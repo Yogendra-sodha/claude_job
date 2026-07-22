@@ -385,7 +385,7 @@
           <div class="field"><label>API base URL</label><input id="s_base" placeholder="https://api.openai.com/v1"></div>
           <div class="field"><label>Model</label><input id="s_model" placeholder="gpt-5"></div>
         </div>
-        <div class="field"><label>API key</label><input id="s_key" type="password" placeholder="sk-..."><p class="hint">Stored in your local database on this computer, sent only to the provider you choose. For Ollama, any placeholder works.</p></div>
+        <div class="field"><label>API key <span class="small" style="opacity:.7">(optional here)</span></label><input id="s_key" type="password" placeholder="leave blank if using .env"><p class="hint">Recommended: put your key in the server's <code>.env</code> file as <code>AI_API_KEY=…</code> (never stored in the DB, more secure), then restart the server. Only set it here if you'd rather not use .env. The extension's AI autofill uses whichever is set.</p></div>
         <button class="btn ghost sm" id="testKey">Test connection</button>
         <span class="small" id="keyStatus"></span>
       </div>

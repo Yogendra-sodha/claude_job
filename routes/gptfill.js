@@ -58,14 +58,14 @@ router.post('/', async (req, res) => {
     if (!questions.length) return res.json({ answers: [] });
 
     const settings = (await query('SELECT * FROM settings WHERE id = 1')).rows[0] || {};
-    // AI autofill only runs when API mode is enabled in Settings — never spends silently.
-    if ((settings.mode || 'manual') !== 'openai') {
-      return res.json({ answers: [], disabled: 'AI mode is off — enable it in Settings → AI mode → API.' });
-    }
-    const apiKey = (settings.api_key || '').trim();
+    // Key comes from the environment first (.env, never in the DB/UI), then the
+    // Settings key as a fallback. Model + base URL still come from Settings.
+    const apiKey = (process.env.AI_API_KEY || process.env.OPENAI_API_KEY || settings.api_key || '').trim();
     const base = (settings.api_base || DEFAULT_BASE).trim().replace(/\/+$/, '');
     const model = (settings.model || 'gpt-5').trim();
-    if (!apiKey) return res.status(400).json({ error: 'No API key set — add one in Settings → AI.' });
+    if (!apiKey) {
+      return res.json({ answers: [], disabled: 'No API key — set AI_API_KEY in the server .env file (then restart it).' });
+    }
 
     const profile = (await query('SELECT * FROM profiles WHERE id = 1')).rows[0] || {};
     const ctx = buildContext(profile);
