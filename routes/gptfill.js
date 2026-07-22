@@ -159,4 +159,33 @@ router.get('/last', (req, res) => {
   res.json(lastExchange);
 });
 
+// GET /api/gpt-fill/models — list the models the configured key can access
+// (OpenAI-compatible /models). Lets the UI offer valid choices instead of guessing.
+router.get('/models', async (req, res) => {
+  try {
+    const settings = (await query('SELECT * FROM settings WHERE id = 1')).rows[0] || {};
+    const apiKey = (process.env.AI_API_KEY || process.env.OPENAI_API_KEY || settings.api_key || '').trim();
+    const base = (settings.api_base || DEFAULT_BASE).trim().replace(/\/+$/, '');
+    if (!apiKey) return res.status(400).json({ error: 'No API key — set AI_API_KEY in .env, then restart the server.' });
+
+    let r;
+    try {
+      r = await fetch(base + '/models', { headers: { Authorization: 'Bearer ' + apiKey } });
+    } catch (e) {
+      return res.status(502).json({ error: 'Could not reach ' + base + '/models: ' + e.message });
+    }
+    if (!r.ok) {
+      let t = '';
+      try { t = (await r.text()).slice(0, 300); } catch (e) {}
+      return res.status(502).json({ error: 'Provider error ' + r.status + ': ' + t });
+    }
+    const data = await r.json();
+    const ids = Array.isArray(data.data) ? data.data.map((m) => m && m.id).filter(Boolean).sort()
+      : (Array.isArray(data.models) ? data.models.map((m) => (typeof m === 'string' ? m : m.id || m.name)).filter(Boolean).sort() : []);
+    res.json({ models: ids, base });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

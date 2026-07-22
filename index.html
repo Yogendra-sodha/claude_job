@@ -383,8 +383,12 @@
         </div>
         <div class="grid2">
           <div class="field"><label>API base URL</label><input id="s_base" placeholder="https://api.openai.com/v1"></div>
-          <div class="field"><label>Model</label><input id="s_model" placeholder="gpt-5"></div>
+          <div class="field"><label>Model</label>
+            <div class="row"><input id="s_model" placeholder="gpt-5" list="modelList" style="flex:1;min-width:120px"><button class="btn ghost sm" id="listModels" type="button">List models</button></div>
+            <datalist id="modelList"></datalist>
+          </div>
         </div>
+        <div id="modelResults" class="small" style="margin:-4px 0 8px"></div>
         <div class="field"><label>API key <span class="small" style="opacity:.7">(optional here)</span></label><input id="s_key" type="password" placeholder="leave blank if using .env"><p class="hint">Recommended: put your key in the server's <code>.env</code> file as <code>AI_API_KEY=…</code> (never stored in the DB, more secure), then restart the server. Only set it here if you'd rather not use .env. The extension's AI autofill uses whichever is set.</p></div>
         <button class="btn ghost sm" id="testKey">Test connection</button>
         <span class="small" id="keyStatus"></span>
@@ -938,6 +942,22 @@ $('s_mode').onchange=()=>{$('openaiBox').style.display=$('s_mode').value==='open
 $('s_provider').onchange=()=>{
   const p=AI_PRESETS[$('s_provider').value];
   if(p){$('s_base').value=p.base;$('s_model').value=p.model;}
+};
+$('listModels').onclick=async()=>{
+  $('modelResults').textContent='Loading models your key can access…';
+  try{
+    const r=await fetch('/api/gpt-fill/models');
+    const d=await r.json();
+    if(d.error){$('modelResults').innerHTML='⚠️ '+esc(d.error);return}
+    const models=d.models||[];
+    if(!models.length){$('modelResults').textContent='No models returned by the provider.';return}
+    $('modelList').innerHTML=models.map(m=>'<option value="'+esc(m)+'">').join('');
+    const pref=models.filter(m=>/gpt|chat|deepseek|glm|kimi|llama|mistral|qwen|gemini|claude|\bo[0-9]/i.test(m));
+    const show=(pref.length?pref:models).slice(0,80);
+    $('modelResults').innerHTML='<b>'+models.length+' models available.</b> Click one to use it:<br>'+
+      show.map(m=>'<a href="#" data-m="'+esc(m)+'" style="display:inline-block;margin:3px 4px;padding:2px 8px;background:#242a45;border-radius:6px;text-decoration:none;color:var(--text)">'+esc(m)+'</a>').join('');
+    $('modelResults').querySelectorAll('[data-m]').forEach(a=>a.onclick=e=>{e.preventDefault();$('s_model').value=a.dataset.m;$('modelResults').innerHTML='✅ Selected <b>'+esc(a.dataset.m)+'</b> — click <b>Save settings</b> to keep it.';});
+  }catch(e){$('modelResults').textContent='⚠️ '+e.message+' — is the server running (npm start)?'}
 };
 $('saveSettings').onclick=()=>{
   const prev=store.get('settings',{});
