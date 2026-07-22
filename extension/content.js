@@ -547,6 +547,7 @@ async function aiFill() {
   if (!fresh.length) return 0;
   fresh.forEach((q) => jfAiAsked.add(q.label));
 
+  console.log('[JobFlow AI] → sending', fresh.length, 'questions to the model:', fresh);
   jfFlash('Asking AI to answer ' + fresh.length + ' question' + (fresh.length > 1 ? 's' : '') + '…', '#8b7dff');
   let resp;
   try { resp = await chrome.runtime.sendMessage({ action: 'gptFill', questions: fresh }); }
@@ -556,6 +557,7 @@ async function aiFill() {
   if (data.disabled) { jfFlash('Turn on API mode + add a key in Settings → AI to let it answer questions.', '#f59e0b'); return 0; }
   if (data.error) { jfFlash('AI: ' + data.error, '#ff4d4f'); return 0; }
 
+  console.log('[JobFlow AI] ← model answered:', data.answers);
   let filled = 0;
   for (const a of (data.answers || [])) {
     if (!a || !a.answer || !String(a.answer).trim()) continue;
@@ -575,6 +577,7 @@ async function aiFill() {
       }
     } catch (e) { /* skip this answer */ }
   }
+  console.log('[JobFlow AI] ✓ filled', filled, 'of', (data.answers || []).length, 'answers into the form');
   if (filled > 0) jfFlash('✨ AI answered ' + filled + ' question' + (filled > 1 ? 's' : '') + ' (purple) — review them before submitting!', '#8b7dff');
   return filled;
 }

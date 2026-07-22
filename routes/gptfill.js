@@ -11,6 +11,15 @@ const { query } = require('../db');
 
 const DEFAULT_BASE = 'https://api.openai.com/v1';
 
+// Keeps the last AI exchange in memory so you can inspect exactly what was sent
+// and returned — GET /api/gpt-fill/last. Never stores the API key.
+let lastExchange = null;
+function record(obj) {
+  lastExchange = Object.assign({ at: new Date().toISOString() }, obj);
+  console.log('[gpt-fill]', obj.stage || '', '| questions:', (obj.questionsSent || []).length,
+    '| answers:', (obj.answers || []).length, obj.error ? ('| ERROR: ' + obj.error) : '');
+}
+
 function buildContext(profile) {
   let d = {};
   try { d = JSON.parse(profile.demographics || '{}'); } catch (e) {}
@@ -63,7 +72,9 @@ router.post('/', async (req, res) => {
     const apiKey = (process.env.AI_API_KEY || process.env.OPENAI_API_KEY || settings.api_key || '').trim();
     const base = (settings.api_base || DEFAULT_BASE).trim().replace(/\/+$/, '');
     const model = (settings.model || 'gpt-5').trim();
+    const qSummary = questions.map((q) => ({ id: q.id, question: q.label, type: q.type, options: q.options }));
     if (!apiKey) {
+      record({ stage: 'no-key', questionsSent: qSummary, answers: [], error: 'no API key' });
       return res.json({ answers: [], disabled: 'No API key — set AI_API_KEY in the server .env file (then restart it).' });
     }
 
@@ -94,6 +105,7 @@ router.post('/', async (req, res) => {
         body: JSON.stringify(body),
       });
     } catch (e) {
+      record({ stage: 'unreachable', model, base, questionsSent: qSummary, answers: [], error: 'unreachable: ' + e.message });
       return res.status(502).json({ error: 'Could not reach the AI provider (' + base + '): ' + e.message });
     }
 
@@ -110,7 +122,10 @@ router.post('/', async (req, res) => {
         });
         if (!r.ok) { try { detail = (await r.text()).slice(0, 400); } catch (e) {} }
       }
-      if (!r.ok) return res.status(502).json({ error: 'AI provider error ' + r.status + ': ' + detail });
+      if (!r.ok) {
+        record({ stage: 'provider-error', model, base, questionsSent: qSummary, answers: [], error: r.status + ': ' + detail });
+        return res.status(502).json({ error: 'AI provider error ' + r.status + ': ' + detail });
+      }
     }
 
     const data = await r.json();
@@ -123,10 +138,25 @@ router.post('/', async (req, res) => {
       try { parsed = m ? JSON.parse(m[0]) : { answers: [] }; } catch (e2) { parsed = { answers: [] }; }
     }
     const answers = Array.isArray(parsed.answers) ? parsed.answers.filter((a) => a && a.id != null) : [];
+    record({
+      stage: 'ok', model, base,
+      questionsSent: qSummary,
+      promptSent: { system: SYSTEM_PROMPT, user: userMsg },
+      rawModelReply: content,
+      answers,
+      usage: data.usage || null,
+    });
     res.json({ answers, model });
   } catch (err) {
+    record({ stage: 'server-error', answers: [], error: err.message });
     res.status(500).json({ error: err.message });
   }
+});
+
+// GET /api/gpt-fill/last — inspect the most recent AI exchange (no key stored)
+router.get('/last', (req, res) => {
+  if (!lastExchange) return res.json({ message: 'No AI autofill has run yet. Click ⚡ on a job form, then refresh this page.' });
+  res.json(lastExchange);
 });
 
 module.exports = router;
