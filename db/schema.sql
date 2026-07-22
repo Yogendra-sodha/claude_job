@@ -71,6 +71,23 @@ INSERT INTO settings (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
 -- Migration for existing databases: provider base URL for the AI autofill
 ALTER TABLE settings ADD COLUMN IF NOT EXISTS api_base TEXT DEFAULT 'https://api.openai.com/v1';
 
+-- Every AI autofill request/response, with token accounting (never stores the API key)
+CREATE TABLE IF NOT EXISTS ai_requests (
+  id SERIAL PRIMARY KEY,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  stage TEXT DEFAULT '',
+  model TEXT DEFAULT '',
+  base TEXT DEFAULT '',
+  questions JSONB,
+  prompt TEXT DEFAULT '',
+  raw_reply TEXT DEFAULT '',
+  answers JSONB,
+  input_tokens INTEGER DEFAULT 0,
+  output_tokens INTEGER DEFAULT 0,
+  error TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_ai_requests_created ON ai_requests(created_at DESC);
+
 -- Indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_contacts_app_id ON contacts(app_id);
 CREATE INDEX IF NOT EXISTS idx_materials_app_id ON materials(app_id);

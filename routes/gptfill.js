@@ -11,13 +11,28 @@ const { query } = require('../db');
 
 const DEFAULT_BASE = 'https://api.openai.com/v1';
 
-// Keeps the last AI exchange in memory so you can inspect exactly what was sent
-// and returned — GET /api/gpt-fill/last. Never stores the API key.
+// Keeps the last AI exchange in memory (GET /api/gpt-fill/last) AND persists
+// every exchange to the ai_requests table with token counts. Never stores the key.
 let lastExchange = null;
-function record(obj) {
-  lastExchange = Object.assign({ at: new Date().toISOString() }, obj);
-  console.log('[gpt-fill]', obj.stage || '', '| questions:', (obj.questionsSent || []).length,
-    '| answers:', (obj.answers || []).length, obj.error ? ('| ERROR: ' + obj.error) : '');
+// Rough token estimate when the provider doesn't return usage: ~4 chars/token.
+function estTokens(str) { return Math.ceil(((str || '') + '').length / 4); }
+async function record(obj) {
+  const promptText = obj.promptSent ? ((obj.promptSent.system || '') + '\n' + (obj.promptSent.user || '')) : (obj.promptText || '');
+  const u = obj.usage || {};
+  const inTok = u.prompt_tokens || u.input_tokens || (promptText ? estTokens(promptText) : 0);
+  const outTok = u.completion_tokens || u.output_tokens || (obj.rawModelReply ? estTokens(obj.rawModelReply) : 0);
+  lastExchange = Object.assign({ at: new Date().toISOString(), inputTokens: inTok, outputTokens: outTok }, obj);
+  console.log('[gpt-fill]', obj.stage || '', '| q:', (obj.questionsSent || []).length,
+    '| a:', (obj.answers || []).length, '| tokens in/out:', inTok + '/' + outTok, obj.error ? ('| ERROR: ' + obj.error) : '');
+  try {
+    await query(
+      `INSERT INTO ai_requests (stage, model, base, questions, prompt, raw_reply, answers, input_tokens, output_tokens, error)
+       VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7::jsonb,$8,$9,$10)`,
+      [obj.stage || '', obj.model || '', obj.base || '',
+        JSON.stringify(obj.questionsSent || []), promptText.slice(0, 20000), (obj.rawModelReply || '').slice(0, 20000),
+        JSON.stringify(obj.answers || []), inTok, outTok, obj.error || '']
+    );
+  } catch (e) { console.warn('[gpt-fill] db log failed:', e.message); }
 }
 
 function buildContext(profile) {
@@ -157,6 +172,23 @@ router.post('/', async (req, res) => {
 router.get('/last', (req, res) => {
   if (!lastExchange) return res.json({ message: 'No AI autofill has run yet. Click ⚡ on a job form, then refresh this page.' });
   res.json(lastExchange);
+});
+
+// GET /api/gpt-fill/log — every stored AI request + running token totals
+router.get('/log', async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit || '25', 10) || 25, 500);
+    const rows = (await query(
+      'SELECT id, created_at, stage, model, input_tokens, output_tokens, questions, answers, error FROM ai_requests ORDER BY id DESC LIMIT $1',
+      [limit]
+    )).rows;
+    const t = (await query(
+      'SELECT COUNT(*)::int AS calls, COALESCE(SUM(input_tokens),0)::int AS input_tokens, COALESCE(SUM(output_tokens),0)::int AS output_tokens FROM ai_requests'
+    )).rows[0];
+    res.json({ totals: t, showing: rows.length, rows });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/gpt-fill/models — list the models the configured key can access
