@@ -1,5 +1,8 @@
 {
   "enabledPlugins": {
-    "superpowers-chrome@superpowers-marketplace": true
+    "superpowers-chrome@superpowers-marketplace": true,
+    "episodic-memory@superpowers-marketplace": true,
+    "superpowers-lab@superpowers-marketplace": true,
+    "claude-session-driver@superpowers-marketplace": true
   }
 }
