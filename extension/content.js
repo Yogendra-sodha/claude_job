@@ -41,6 +41,67 @@ function jfFlash(msg, color) {
   f._t = setTimeout(() => { f.style.opacity = '0'; }, 6000);
 }
 
+// ---- Transparency panel (Jobright-style): shows every question we answered
+// and the value we chose, colour-coded by source, so nothing fills silently. ----
+let jfPanelEl = null, jfPanelList = null, jfPanelCount = null;
+const jfPanelSeen = new Set();
+const JF_SRC = { profile: { c: '#3ecf8e', t: 'from profile' }, ai: { c: '#8b7dff', t: 'AI' }, skip: { c: '#f59e0b', t: 'not answered' } };
+function jfPanelBuild() {
+  if (jfPanelEl) return jfPanelEl;
+  jfPanelEl = document.createElement('div');
+  jfPanelEl.id = 'jf-panel';
+  jfPanelEl.style.cssText =
+    'position:fixed;bottom:82px;right:20px;width:330px;max-height:56vh;background:#171a2b;color:#e7e9f3;' +
+    'border:1px solid #2b2f45;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.45);' +
+    'font:13px/1.45 "Segoe UI",Arial,sans-serif;z-index:2147483646;display:none;flex-direction:column;overflow:hidden';
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:#1f2338;font-weight:600';
+  const title = document.createElement('span');
+  title.innerHTML = '⚡ Answers <span id="jf-panel-count" style="opacity:.55;font-weight:400"></span>';
+  const close = document.createElement('span');
+  close.textContent = '×';
+  close.title = 'Hide';
+  close.style.cssText = 'cursor:pointer;font-size:18px;opacity:.7;padding:0 4px';
+  close.onclick = () => { jfPanelEl.style.display = 'none'; };
+  head.appendChild(title); head.appendChild(close);
+  jfPanelList = document.createElement('div');
+  jfPanelList.style.cssText = 'overflow-y:auto;padding:2px 0';
+  jfPanelEl.appendChild(head); jfPanelEl.appendChild(jfPanelList);
+  document.body.appendChild(jfPanelEl);
+  jfPanelCount = jfPanelEl.querySelector('#jf-panel-count');
+  return jfPanelEl;
+}
+// Log a question → answer pair. source: 'profile' | 'ai' | 'skip'.
+function jfLogQA(question, answer, source) {
+  question = (question || '').replace(/\s+/g, ' ').trim();
+  if (!question) return;
+  const sig = question.toLowerCase().slice(0, 80);
+  if (jfPanelSeen.has(sig)) return;   // one row per question across the whole flow
+  jfPanelSeen.add(sig);
+  jfPanelBuild();
+  jfPanelEl.style.display = 'flex';
+  const s = JF_SRC[source] || JF_SRC.profile;
+  const row = document.createElement('div');
+  row.style.cssText = 'padding:8px 12px;border-bottom:1px solid #23273c';
+  const q = document.createElement('div');
+  q.textContent = question.length > 96 ? question.slice(0, 96) + '…' : question;
+  q.style.cssText = 'opacity:.72;font-size:12px;margin-bottom:3px';
+  const a = document.createElement('div');
+  a.style.cssText = 'display:flex;align-items:baseline;gap:6px';
+  const dot = document.createElement('span');
+  dot.textContent = '●'; dot.style.color = s.c;
+  const av = document.createElement('span');
+  av.textContent = (answer && String(answer).trim()) || '—';
+  av.style.cssText = 'font-weight:600;color:' + (answer ? '#e7e9f3' : '#f59e0b');
+  const tag = document.createElement('span');
+  tag.textContent = s.t; tag.style.cssText = 'opacity:.5;font-size:11px;margin-left:auto';
+  a.appendChild(dot); a.appendChild(av); a.appendChild(tag);
+  row.appendChild(q); row.appendChild(a);
+  jfPanelList.appendChild(row);
+  jfPanelList.scrollTop = jfPanelList.scrollHeight;
+  if (jfPanelCount) jfPanelCount.textContent = '(' + jfPanelList.children.length + ')';
+}
+
 // ---- Cached profile so we fetch once, then reuse for auto-fill + manual ----
 let JF_DATA = null;
 async function jfGetData() {
@@ -336,6 +397,7 @@ async function fillCustomDropdowns(P, filledKeys, entryCount) {
         if (typeof hit.click === 'function') hit.click();
         t.style.outline = '2px solid #3ecf8e';
         if (JFMatcher.SINGLE_FILL.has(key)) filledKeys.add(key);
+        jfLogQA(f.label || f.idname, (hit.textContent || val).replace(/\s+/g, ' ').trim(), 'profile');
         n++;
         await sleep(200);
       } else {
@@ -371,6 +433,7 @@ function describe(el) {
     type: el.type,
     tag: el.tagName.toLowerCase(),
     role: el.getAttribute('role'),
+    haspopup: el.getAttribute('aria-haspopup'),
   };
 }
 
@@ -494,13 +557,25 @@ async function aiFill() {
     if (els) els.forEach((e) => e.setAttribute('data-jf-q', t)); else el.setAttribute('data-jf-q', t);
   };
   const eligible = (el) => { if (el.disabled || el.readOnly) return false; const r = el.getBoundingClientRect(); return r.width > 0 || r.height > 0; };
-  const ruleKeyExcluded = (el) => { const { key } = JFMatcher.classify(describe(el)); return key && AI_EXCLUDE.test(key); };
+  // The rules "own" a field — never pay the AI for it — when the matcher can
+  // classify it AND we already hold a value (gender, race, veteran, salary, …).
+  // The AI can only echo that same profile value, so asking is pure waste; the
+  // rule/custom-dropdown pass fills it locally. Only genuinely unknown, open
+  // questions reach the model.
+  const P = JFMatcher.buildProfile((JF_DATA && JF_DATA.profile) || {});
+  const ruleOwns = (el) => {
+    const { key } = JFMatcher.classify(describe(el));
+    if (!key) return false;
+    if (AI_EXCLUDE.test(key)) return true;
+    if (JFMatcher.isEntryKey(key)) return (JFMatcher.entryListFor(key, P) || []).length > 0;
+    return !!JFMatcher.resolveValue(key, P);
+  };
 
   // Open-ended text: empty textareas, or text inputs whose label is a real question
   deepQueryAll('textarea, input[type=text], input:not([type])').forEach((el) => {
     if (!eligible(el) || (el.value && el.value.trim())) return;
     if (el.getAttribute('role') === 'combobox' || el.getAttribute('data-jf-q')) return;
-    if (ruleKeyExcluded(el)) return;
+    if (ruleOwns(el)) return;
     const label = (describe(el).label || '').trim();
     const isQ = el.tagName === 'TEXTAREA' || /\?/.test(label) || label.split(/\s+/).length >= 6;
     if (!label || label.length < 6 || !isQ) return;
@@ -509,7 +584,7 @@ async function aiFill() {
   // Native selects still unset
   deepQueryAll('select').forEach((el) => {
     if (!eligible(el) || el.selectedIndex > 0 || el.getAttribute('data-jf-q')) return;
-    if (ruleKeyExcluded(el)) return;
+    if (ruleOwns(el)) return;
     const label = (describe(el).label || '').trim();
     const opts = [...el.options].map((o) => o.text.trim()).filter(Boolean);
     if (!label || opts.length < 2) return;
@@ -521,7 +596,7 @@ async function aiFill() {
     if (el.getAttribute('aria-disabled') === 'true' || el.disabled) return;
     const cur = ((el.value || '') + ' ' + (el.textContent || '')).trim();
     if (cur && !/select|choose|make a selection|please|^[-–—\s.]*$/i.test(cur)) return;
-    if (ruleKeyExcluded(el)) return;
+    if (ruleOwns(el)) return;
     const label = (describe(el).label || '').trim();
     if (!label) return;
     add(el, 'combobox', label);
@@ -537,7 +612,7 @@ async function aiFill() {
   Object.keys(groups).forEach((q) => {
     const els = groups[q];
     if (els.some((e) => e.checked) || els[0].getAttribute('data-jf-q')) return;
-    if (ruleKeyExcluded(els[0])) return;
+    if (ruleOwns(els[0])) return;
     const opts = els.map((e) => (describe(e).optionText || e.value || '').trim()).filter(Boolean);
     if (q.length < 6 || !opts.length) return;
     add(null, 'radio', q, opts, els);
@@ -558,25 +633,39 @@ async function aiFill() {
   if (data.error) { jfFlash('AI: ' + data.error, '#ff4d4f'); return 0; }
 
   console.log('[JobFlow AI] ← model answered:', data.answers);
+  const labelById = {};
+  fresh.forEach((q) => { labelById[q.id] = q.label; });
+  const answeredIds = new Set();
   let filled = 0;
   for (const a of (data.answers || [])) {
-    if (!a || !a.answer || !String(a.answer).trim()) continue;
+    if (!a) continue;
+    answeredIds.add(a.id);
+    const label = labelById[a.id] || '';
+    if (!a.answer || !String(a.answer).trim()) { jfLogQA(label, '', 'skip'); continue; }
     const tgt = targets.find((x) => x.token === a.id);
     if (!tgt) continue;
     const ans = String(a.answer);
+    let ok = false;
     try {
-      if (tgt.type === 'text' || tgt.type === 'textarea') { setVal(tgt.el, ans); filled++; }
-      else if (tgt.type === 'select') { if (selectOption(tgt.el, ans, null)) filled++; }
-      else if (tgt.type === 'combobox') { if (await openAndPickOption(tgt.el, ans, null, '#8b7dff')) filled++; }
+      if (tgt.type === 'text' || tgt.type === 'textarea') { setVal(tgt.el, ans); ok = true; }
+      else if (tgt.type === 'select') { ok = selectOption(tgt.el, ans, null); }
+      else if (tgt.type === 'combobox') { ok = await openAndPickOption(tgt.el, ans, null, '#8b7dff'); }
       else if (tgt.type === 'radio') {
         const hit = tgt.els.find((e) => {
           const ot = (describe(e).optionText || e.value || '').toLowerCase();
           return JFMatcher.matchOption(ans, ot, null) || ot === ans.toLowerCase() || ot.includes(ans.toLowerCase());
         });
-        if (hit) { hit.click(); hit.dispatchEvent(new Event('change', { bubbles: true })); hit.style.outline = '2px solid #8b7dff'; filled++; }
+        if (hit) { hit.click(); hit.dispatchEvent(new Event('change', { bubbles: true })); hit.style.outline = '2px solid #8b7dff'; ok = true; }
       }
     } catch (e) { /* skip this answer */ }
+    if (ok) filled++;
+    // Show it either way: green-ish AI value if we placed it, amber "not
+    // answered" if the model returned nothing usable or we couldn't select it.
+    jfLogQA(label, ok ? ans : '', ok ? 'ai' : 'skip');
   }
+  // Any question the model didn't return at all → mark it unanswered, so the
+  // panel accounts for every question we sent.
+  fresh.forEach((q) => { if (!answeredIds.has(q.id)) jfLogQA(q.label, '', 'skip'); });
   console.log('[JobFlow AI] ✓ filled', filled, 'of', (data.answers || []).length, 'answers into the form');
   if (filled > 0) jfFlash('✨ AI answered ' + filled + ' question' + (filled > 1 ? 's' : '') + ' (purple) — review them before submitting!', '#8b7dff');
   return filled;

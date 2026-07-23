@@ -62,7 +62,13 @@
     // whose container reads "First Name"). Identifier + specific label only.
     const lab = words(f.label);
     const hay = id + ' ' + lab;
-    const isChoice = f.tag === 'select' || f.type === 'radio' || f.type === 'checkbox';
+    // A "choice" field is one whose answer is picked from a fixed option set:
+    // native <select>, radio/checkbox, OR a custom combobox/listbox widget
+    // (role=combobox / aria-haspopup=listbox). Custom comboboxes were previously
+    // excluded, so demographic dropdowns (gender/race/veteran) got key=null and
+    // fell through to the paid AI pass instead of being filled from the profile.
+    const isChoice = f.tag === 'select' || f.type === 'radio' || f.type === 'checkbox'
+      || f.role === 'combobox' || f.role === 'listbox' || f.haspopup === 'listbox';
 
     if (section === 'referral') return 'referrerName';
 
@@ -75,6 +81,14 @@
     // Demographic ANSWERS only ever live in a dropdown/radio/checkbox. A text
     // input inside an EEO form is a name/date/ID field → fall through to personal.
     if (section === 'eeo' && isChoice) {
+      // The field's OWN id (e.g. "RaceSelect") is trustworthy; the label of a
+      // custom combobox is polluted with every option's text ("…Hispanic or
+      // Latino…White…"), so a race dropdown would otherwise be misread as the
+      // binary hispanic question and pick the literally-wrong option. Prefer id.
+      if (/race|ethnic/.test(id) && !/hispanic|latino/.test(id)) return 'race';
+      if (/gender|\bsex\b/.test(id)) return 'gender';
+      if (/veteran/.test(id)) return 'veteran';
+      if (/disab/.test(id)) return 'disability';
       if (/hispanic|latino/.test(hay)) return 'hispanic';
       if (/gender|\bsex\b/.test(hay)) return 'gender';
       if (/race|ethnic/.test(hay)) return 'race';
@@ -316,11 +330,24 @@
 
     if (sv === 'yes') return /\byes\b|\btrue\b/i.test(ot);
     if (sv === 'no') return /\bno\b|\bfalse\b/i.test(ot) && !/\bnot\b/i.test(ot);
-    const a = sv.replace(/[^a-z0-9]/g, '');
-    const b = lc(ot).replace(/[^a-z0-9]/g, '');
-    if (a === b) return true;
-    if (a.length > 3 && b.length > 3 && (b.includes(a) || a.includes(b))) return true;
-    return false;
+    return looseMatch(sv, ot);
+  }
+
+  // Whole-word / shared-stem containment. Every word of the saved value must
+  // appear in the option as a WHOLE word (or a stem ≥4 chars, so "Bachelors"
+  // still matches "Bachelor's Degree"). This is deliberately stricter than a
+  // raw substring test — the old `ot.includes(sv)` let "Male" match "Female"
+  // and "Asian" match "Caucasian", silently selecting the wrong option.
+  function looseMatch(savedVal, optionText) {
+    const norm = (s) => lc(s).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const svN = norm(savedVal), otN = norm(optionText);
+    if (!svN || !otN) return false;
+    if (svN === otN) return true;
+    const otW = otN.split(' ');
+    return svN.split(' ').every((w) =>
+      otW.includes(w) ||
+      (w.length > 3 && otW.some((o) => o.length > 3 && (o.startsWith(w) || w.startsWith(o))))
+    );
   }
 
   // Pick the best <option> text for a native select. Returns index or -1.
@@ -332,8 +359,8 @@
       if (t && (t === vN)) return i;
     }
     for (let i = 0; i < optionTexts.length; i++) {
-      const t = lc(optionTexts[i]).replace(/[^a-z0-9]/g, '');
-      if (t && t.length > 2 && (t.includes(vN) || vN.includes(t))) return i;
+      if (i === 0 && /select|choose|make a selection/i.test(optionTexts[i])) continue;
+      if (looseMatch(value, optionTexts[i])) return i;
     }
     if (kind) {
       for (let i = 0; i < optionTexts.length; i++) {
