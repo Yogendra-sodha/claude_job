@@ -45,7 +45,7 @@ app.use((req, res, next) => {
   }
 });
 
-// Error handler
+// Error handler check
 app.use((err, req, res, next) => {
   console.error('Server error:', err.message);
   res.status(500).json({ error: err.message });
@@ -57,3 +57,5 @@ app.listen(PORT, '127.0.0.1', () => {
   console.log(`  Open http://localhost:${PORT} in your browser`);
   console.log(`  Press Ctrl+C to stop\n`);
 });
+
+
