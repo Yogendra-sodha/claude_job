@@ -45,7 +45,7 @@ function jfFlash(msg, color) {
 // and the value we chose, colour-coded by source, so nothing fills silently. ----
 let jfPanelEl = null, jfPanelList = null, jfPanelCount = null;
 const jfPanelSeen = new Set();
-const JF_SRC = { profile: { c: '#3ecf8e', t: 'from profile' }, ai: { c: '#8b7dff', t: 'AI' }, skip: { c: '#f59e0b', t: 'not answered' } };
+const JF_SRC = { profile: { c: '#3ecf8e', t: 'from profile' }, ai: { c: '#8b7dff', t: 'AI' }, compliance: { c: '#f5a623', t: 'default (No)' }, skip: { c: '#f59e0b', t: 'not answered' } };
 function jfPanelBuild() {
   if (jfPanelEl) return jfPanelEl;
   jfPanelEl = document.createElement('div');
@@ -186,9 +186,11 @@ async function jfRun(manual) {
       return 0;
     }
     let n = await fillForm(data.profile, data.letter || '');
-    // AI phase runs only on a manual ⚡ click (never on every auto-fill tick),
-    // so it stays under your control and never spends silently.
-    if (manual) { try { n += await aiFill(); } catch (e) { console.warn('[JobFlow] AI phase:', e && e.message); } }
+    // ⚡ NEVER calls the AI. On a manual click it also answers unclassified yes/no
+    // COMPLIANCE questions from your saved default ("No") — no tokens spent. The
+    // AI lives only behind the separate 🤖 review button (aiFill), where you pick
+    // which questions to send.
+    if (manual) { try { n += await fillComplianceDefaults(JFMatcher.buildProfile(data.profile)); } catch (e) { console.warn('[JobFlow] compliance pass:', e && e.message); } }
     jfTotalFilled += n;
     if (!manual) jfIdleRuns = (n > 0) ? 0 : (jfIdleRuns + 1);   // track no-progress auto-runs
     if (n > 0) {
@@ -439,6 +441,70 @@ async function fillCustomDropdowns(P, filledKeys, entryCount) {
     } catch (err) {
       console.warn('[JobFlow] dropdown skipped:', err && err.message);
     }
+  }
+  return n;
+}
+
+// =============================================
+// COMPLIANCE PASS — answer unclassified Yes/No questions from the saved default
+// ("No"), so trivial compliance questions (relatives employed, non-compete,
+// previously employed…) never reach the paid AI. Only touches fields the matcher
+// could NOT classify; a recognized-but-empty yes/no (e.g. age18) is left alone.
+// Each fill is logged to the answers panel so it can be overridden before submit.
+// =============================================
+async function fillComplianceDefaults(P) {
+  if (typeof JFMatcher === 'undefined') return 0;
+  const def = P.complianceDefault || 'No';
+  let n = 0;
+
+  // ---- native <select> + radio groups ----
+  const natives = deepQueryAll('select, input[type="radio"]');
+  const radioSeen = new Set();
+  for (const el of natives) {
+    if (el.disabled || el.readOnly) continue;
+    if (el.closest('#jf-floating-btn') || el.closest('#jf-panel')) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) continue;
+    const f = describe(el);
+    if (JFMatcher.classify(f).key) continue;                 // rules own it → skip
+    if (el.tagName === 'SELECT') {
+      if (el.selectedIndex > 0) continue;                    // already answered
+      const opts = [...el.options].map((o) => o.text);
+      if (!JFMatcher.isYesNoOptions(opts)) continue;
+      if (selectOption(el, def, 'yesno')) { jfLogQA(f.label || f.idname, def, 'compliance'); n++; }
+    } else {
+      const groupName = el.name || (f.label || '');
+      if (radioSeen.has(groupName)) continue; radioSeen.add(groupName);
+      const group = natives.filter((x) => x.type === 'radio' && (x.name || (describe(x).label || '')) === groupName);
+      if (group.some((x) => x.checked)) continue;            // already answered
+      const opts = group.map((x) => (describe(x).optionText || x.value || ''));
+      if (!JFMatcher.isYesNoOptions(opts)) continue;
+      const hit = group.find((x) => JFMatcher.matchOption(def, (describe(x).optionText || x.value || ''), 'yesno'));
+      if (hit) {
+        hit.click();
+        hit.dispatchEvent(new Event('change', { bubbles: true }));
+        hit.style.outline = '2px solid #f5a623';
+        jfLogQA(f.label || f.idname, def, 'compliance'); n++;
+      }
+    }
+  }
+
+  // ---- custom comboboxes (open, and keep the pick only if a yes/no option matched) ----
+  const combos = deepQueryAll('[role="combobox"], [aria-haspopup="listbox"]');
+  const seen = new Set();
+  for (const t of combos) {
+    if (seen.has(t)) continue; seen.add(t);
+    if (t.closest('#jf-floating-btn') || t.closest('#jf-panel')) continue;
+    if (t.getAttribute('aria-disabled') === 'true' || t.disabled) continue;
+    const rect = t.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) continue;
+    const cur = ((t.value || '') + ' ' + (t.textContent || '')).trim();
+    if (cur && !/select|choose|make a selection|please|^[-–—\s.]*$/i.test(cur)) continue;
+    const f = describe(t);
+    if (JFMatcher.classify(f).key) continue;
+    // openAndPickOption only selects when an option matches "No"; a factual
+    // dropdown with no No/decline option is left untouched (returns false).
+    if (await openAndPickOption(t, def, 'yesno', '#f5a623')) { jfLogQA(f.label || f.idname, def, 'compliance'); n++; }
   }
   return n;
 }
