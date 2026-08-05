@@ -126,12 +126,37 @@ async function jfGetData() {
 }
 
 // ---- Does this page/frame look like a real application/signup form? ----
+// Used to decide whether AUTO-fill should fire (conservative — we don't want to
+// run on a random page's search box). Matches identity fields (page 1) OR the
+// question/eligibility/EEO vocabulary of a later application STEP (page 2+),
+// which has no name/email/resume field — that gap is exactly why iCIMS/Workday
+// question pages used to be skipped entirely.
 function jfLooksLikeForm() {
-  const fields = deepQueryAll('input,textarea,select');
+  const fields = deepQueryAll('input,textarea,select,[role="combobox"],[aria-haspopup="listbox"]');
   return fields.some((el) => {
     if (el.type === 'email') return true;
     const hay = [el.name, el.id, el.placeholder, el.getAttribute('aria-label'), el.getAttribute('data-automation-id')].filter(Boolean).join(' ');
-    return /mail|first[\s_-]*name|last[\s_-]*name|full[\s_-]*name|legal[\s_-]*name|resume|cover[\s_-]*letter|linked/i.test(hay);
+    const both = hay + ' ' + (describe(el).label || '');
+    return /mail|first[\s_-]*name|last[\s_-]*name|full[\s_-]*name|legal[\s_-]*name|resume|cover[\s_-]*letter|linked/i.test(both)
+      || /gender|\bsex\b|\brace\b|ethnic|hispanic|latino|veteran|disab|demographic|self[\s_-]*identif/i.test(both)
+      || /sponsor|\bvisa\b|authori[sz]ed to work|eligible to work|right to work|work (permit|authori)|relocat|salary requirement|desired (annual |base )?(salary|pay|compensation)|\b18 years\b|at least 18|require any immigration/i.test(both);
+  });
+}
+
+// ---- Does this frame have ANY visible, fillable control? ----
+// Looser than jfLooksLikeForm — used only when the user EXPLICITLY clicks ⚡ and
+// we broadcast to every frame. An application step (iCIMS/Workday questions)
+// lives in an embedded frame and often has none of the identity keywords above,
+// so an explicit click must still be allowed to fill it.
+function jfHasFillableFields() {
+  const els = deepQueryAll(
+    'input:not([type=hidden]):not([type=submit]):not([type=button]):not([type=image]):not([type=reset]):not([type=password]):not([type=file]), ' +
+    'textarea, select, [role="combobox"], [aria-haspopup="listbox"], input[type="radio"], input[type="checkbox"]'
+  );
+  return els.some((el) => {
+    if (el.closest('#jf-floating-btn') || el.closest('#jf-panel')) return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 || r.height > 0;
   });
 }
 
@@ -176,8 +201,8 @@ async function jfRun(manual) {
       } else {
         const hasIframes = document.querySelectorAll('iframe').length > 0;
         jfFlash(hasIframes
-          ? 'This part of the page has no form — it lives in an embedded frame, which I also asked to fill. If nothing turned green, open a specific job and click Apply first.'
-          : 'No fillable fields found. If this is a job list page, open a job and click Apply first — then the form will fill.', '#f59e0b');
+          ? 'The form on this step is inside an embedded frame — I asked it to fill directly. Watch for green (profile) and purple (AI) fields there; open the ⚡ answers panel to see what was set.'
+          : 'No fillable fields found. If this is a job list page, open a job and click Apply first — then the form will fill.', hasIframes ? '#6d8bff' : '#f59e0b');
       }
     }
     return n;
@@ -216,11 +241,15 @@ try {
     });
   }
 
-  // Receive fill broadcasts initiated from another frame's ⚡ button
+  // Receive fill broadcasts initiated from another frame's ⚡ button. This is an
+  // EXPLICIT user action, so we fill any frame that has fillable controls — not
+  // just ones with identity fields. That is what lets a click on the outer page
+  // fill an application STEP (iCIMS/Workday questions) that lives in an iframe
+  // and has no name/email/resume field of its own.
   try {
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg && msg.action === 'jf-fill' && msg.nonce !== JF_NONCE) {
-        if (jfLooksLikeForm()) jfRun(true);
+        if (jfHasFillableFields()) jfRun(true);
       }
     });
   } catch (err) {}
