@@ -33,7 +33,7 @@ function jfFlash(msg, color) {
   }
   f.textContent = msg;
   f.style.cssText =
-    'position:fixed;bottom:80px;right:20px;max-width:280px;background:#171a2b;color:#e7e9f3;' +
+    'position:fixed;bottom:20px;right:84px;max-width:280px;background:#171a2b;color:#e7e9f3;' +
     'border-left:4px solid ' + (color || '#6d8bff') + ';padding:12px 14px;border-radius:10px;' +
     'font:13px/1.5 "Segoe UI",Arial,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.35);' +
     'z-index:2147483647;opacity:1;transition:opacity .4s';
@@ -43,7 +43,7 @@ function jfFlash(msg, color) {
 
 // ---- Transparency panel (Jobright-style): shows every question we answered
 // and the value we chose, colour-coded by source, so nothing fills silently. ----
-let jfPanelEl = null, jfPanelList = null, jfPanelCount = null;
+let jfPanelEl = null, jfPanelList = null, jfPanelCount = null, jfReviewSection = null;
 const jfPanelSeen = new Set();
 const JF_SRC = { profile: { c: '#3ecf8e', t: 'from profile' }, ai: { c: '#8b7dff', t: 'AI' }, compliance: { c: '#f5a623', t: 'default (No)' }, skip: { c: '#f59e0b', t: 'not answered' } };
 function jfPanelBuild() {
@@ -51,7 +51,7 @@ function jfPanelBuild() {
   jfPanelEl = document.createElement('div');
   jfPanelEl.id = 'jf-panel';
   jfPanelEl.style.cssText =
-    'position:fixed;bottom:82px;right:20px;width:330px;max-height:56vh;background:#171a2b;color:#e7e9f3;' +
+    'position:fixed;bottom:140px;right:20px;width:330px;max-height:56vh;background:#171a2b;color:#e7e9f3;' +
     'border:1px solid #2b2f45;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,.45);' +
     'font:13px/1.45 "Segoe UI",Arial,sans-serif;z-index:2147483646;display:none;flex-direction:column;overflow:hidden';
   const head = document.createElement('div');
@@ -64,9 +64,12 @@ function jfPanelBuild() {
   close.style.cssText = 'cursor:pointer;font-size:18px;opacity:.7;padding:0 4px';
   close.onclick = () => { jfPanelEl.style.display = 'none'; };
   head.appendChild(title); head.appendChild(close);
+  // Interactive review section (populated by the 🤖 button); hidden until used.
+  jfReviewSection = document.createElement('div');
+  jfReviewSection.style.cssText = 'display:none;border-bottom:2px solid #2b2f45;max-height:38vh;overflow-y:auto';
   jfPanelList = document.createElement('div');
   jfPanelList.style.cssText = 'overflow-y:auto;padding:2px 0';
-  jfPanelEl.appendChild(head); jfPanelEl.appendChild(jfPanelList);
+  jfPanelEl.appendChild(head); jfPanelEl.appendChild(jfReviewSection); jfPanelEl.appendChild(jfPanelList);
   document.body.appendChild(jfPanelEl);
   jfPanelCount = jfPanelEl.querySelector('#jf-panel-count');
   return jfPanelEl;
@@ -241,6 +244,21 @@ try {
       // embeds and many ATS pages keep the real form inside an iframe).
       try { chrome.runtime.sendMessage({ action: 'fillAllFrames', nonce: JF_NONCE }); } catch (err) {}
     });
+
+    // 🤖 — open the AI review panel (never sends until you press "Send").
+    const oldAi = document.getElementById('jf-ai-btn');
+    if (oldAi) oldAi.remove();
+    const aiBtn = document.createElement('button');
+    aiBtn.id = 'jf-ai-btn';
+    aiBtn.textContent = '🤖';
+    aiBtn.title = 'JobFlow — review which questions to send to the AI';
+    document.body.appendChild(aiBtn);
+    aiBtn.addEventListener('click', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      jfRenderReview(collectAiCandidates());
+      // Ask the frame(s) holding the real form to open their own review too.
+      try { chrome.runtime.sendMessage({ action: 'reviewAllFrames', nonce: JF_NONCE }); } catch (err) {}
+    });
   }
 
   // Receive fill broadcasts initiated from another frame's ⚡ button. This is an
@@ -252,6 +270,10 @@ try {
     chrome.runtime.onMessage.addListener((msg) => {
       if (msg && msg.action === 'jf-fill' && msg.nonce !== JF_NONCE) {
         if (jfHasFillableFields()) jfRun(true);
+      }
+      // 🤖 review broadcast — a frame with real questions opens its own panel.
+      if (msg && msg.action === 'jf-review' && msg.nonce !== JF_NONCE) {
+        if (jfHasFillableFields()) jfRenderReview(collectAiCandidates());
       }
     });
   } catch (err) {}
@@ -630,26 +652,27 @@ async function openAndPickOption(t, val, kind, outline) {
 }
 
 // =============================================
-// AI PHASE — answer the questions the rules couldn't (manual ⚡ only, so it
-// never spends on every auto-fill tick). Collects leftover question fields,
-// sends them to the local server (which calls the configured LLM), fills back.
+// AI REVIEW — the 🤖 button collects the questions the rules couldn't answer,
+// categorizes them, and shows a review panel where you tick which to send.
+// NOTHING is sent to the model until you press "Send". Three parts:
+// collectAiCandidates() → jfRenderReview() → jfSendSelected().
 // =============================================
-const jfAiAsked = new Set();   // question labels already sent this page (no repeats)
 // Keys the rules own — never hand these to the AI.
 const AI_EXCLUDE = /^(firstName|lastName|fullName|email|phone|linkedin|github|website|home|edu|work|referrerName|consent|pronouns|location)/;
+let jfReviewCands = [];   // current review candidates (set by collectAiCandidates)
 
-async function aiFill() {
-  if (typeof JFMatcher === 'undefined') return 0;
-  const questions = [];
-  const targets = [];
+// Gather unanswered, non-profile, non-compliance questions as review candidates.
+function collectAiCandidates() {
+  if (typeof JFMatcher === 'undefined') return [];
+  deepQueryAll('[data-jf-q]').forEach((e) => e.removeAttribute('data-jf-q')); // fresh each open
+  const cands = [];
   let tok = 0;
   const add = (el, type, label, options, els) => {
-    const t = 'q' + (tok++);
-    const q = { id: t, label: label.slice(0, 300), type };
-    if (options && options.length) q.options = options.slice(0, 30);
-    questions.push(q);
-    targets.push({ token: t, el, els, type });
-    if (els) els.forEach((e) => e.setAttribute('data-jf-q', t)); else el.setAttribute('data-jf-q', t);
+    const category = JFMatcher.categorizeQuestion(describe(el || (els && els[0])), options || []);
+    if (category === 'compliance') return;   // ⚡ answers these from your default, not the AI
+    const token = 'q' + (tok++);
+    cands.push({ token, el, els, type, category, label: (label || '').slice(0, 300), options: (options || []).slice(0, 30) });
+    if (els) els.forEach((e) => e.setAttribute('data-jf-q', token)); else el.setAttribute('data-jf-q', token);
   };
   const eligible = (el) => { if (el.disabled || el.readOnly) return false; const r = el.getBoundingClientRect(); return r.width > 0 || r.height > 0; };
   // The rules "own" a field — never pay the AI for it — when the matcher can
@@ -713,40 +736,112 @@ async function aiFill() {
     add(null, 'radio', q, opts, els);
   });
 
-  const fresh = questions.filter((q) => !jfAiAsked.has(q.label));
-  if (!fresh.length) return 0;
-  fresh.forEach((q) => jfAiAsked.add(q.label));
+  return cands;
+}
 
-  console.log('[JobFlow AI] → sending', fresh.length, 'questions to the model:', fresh);
-  jfFlash('Asking AI to answer ' + fresh.length + ' question' + (fresh.length > 1 ? 's' : '') + '…', '#8b7dff');
+// Render the review panel at the top of the answers panel: one row per
+// candidate, essays pre-checked, factual dropdowns / short answers unchecked.
+function jfRenderReview(cands) {
+  jfReviewCands = cands || [];
+  jfPanelBuild();
+  jfPanelEl.style.display = 'flex';
+  const sec = jfReviewSection;
+  sec.style.display = 'block';
+  sec.innerHTML = '';
+  if (!jfReviewCands.length) {
+    const none = document.createElement('div');
+    none.style.cssText = 'padding:12px;opacity:.8;font-size:12px';
+    none.textContent = 'Nothing needs the AI — everything is filled from your profile.';
+    sec.appendChild(none);
+    setTimeout(() => { if (jfReviewSection) jfReviewSection.style.display = 'none'; }, 4500);
+    return;
+  }
+  const head = document.createElement('div');
+  head.style.cssText = 'padding:8px 12px;font-weight:600;background:#20233a;font-size:13px';
+  head.textContent = 'To answer with AI — tick what to send';
+  sec.appendChild(head);
+
+  const rows = document.createElement('div');
+  sec.appendChild(rows);
+  const updateCount = () => {
+    const nsel = jfReviewCands.filter((x) => x._send).length;
+    send.textContent = nsel ? ('Send ' + nsel + ' to AI →') : 'Select at least one';
+    send.disabled = nsel === 0;
+    send.style.opacity = nsel ? '1' : '.5';
+  };
+  jfReviewCands.forEach((c) => {
+    const row = document.createElement('label');
+    row.style.cssText = 'display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid #23273c;cursor:pointer;align-items:flex-start';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = c.category === 'essay';
+    c._send = cb.checked;
+    cb.style.marginTop = '3px';
+    cb.onchange = () => { c._send = cb.checked; updateCount(); };
+    const body = document.createElement('div');
+    const q = document.createElement('div');
+    q.textContent = c.label.length > 110 ? c.label.slice(0, 110) + '…' : c.label;
+    q.style.cssText = 'font-size:12px;margin-bottom:2px';
+    const meta = document.createElement('div');
+    meta.style.cssText = 'font-size:11px;opacity:.55';
+    const badge = c.category === 'essay' ? 'essay' : (c.category === 'multi' ? 'dropdown' : 'short answer');
+    meta.textContent = badge + (c.options && c.options.length ? ' · ' + c.options.slice(0, 6).join(', ') : '');
+    body.appendChild(q); body.appendChild(meta);
+    row.appendChild(cb); row.appendChild(body);
+    rows.appendChild(row);
+  });
+
+  const foot = document.createElement('div');
+  foot.style.cssText = 'display:flex;gap:8px;padding:10px 12px;position:sticky;bottom:0;background:#171a2b';
+  const send = document.createElement('button');
+  send.style.cssText = 'flex:1;background:linear-gradient(135deg,#8b7dff,#6d8bff);color:#fff;border:none;border-radius:8px;padding:8px;font-weight:600;cursor:pointer';
+  const cancel = document.createElement('button');
+  cancel.textContent = 'Cancel';
+  cancel.style.cssText = 'background:#2b2f45;color:#e7e9f3;border:none;border-radius:8px;padding:8px 12px;cursor:pointer';
+  cancel.onclick = () => { jfReviewSection.style.display = 'none'; };
+  send.onclick = () => { if (jfReviewCands.some((x) => x._send)) jfSendSelected(); };
+  foot.appendChild(send); foot.appendChild(cancel);
+  sec.appendChild(foot);
+  updateCount();
+}
+
+// Send the ticked candidates in ONE batched gptFill call, then fill answers back.
+async function jfSendSelected() {
+  const chosen = jfReviewCands.filter((c) => c._send);
+  if (!chosen.length) return;
+  const questions = chosen.map((c) => {
+    const q = { id: c.token, label: c.label, type: c.type };
+    if (c.options && c.options.length) q.options = c.options;
+    return q;
+  });
+  jfReviewSection.style.display = 'none';
+  jfFlash('Asking AI to answer ' + chosen.length + ' question' + (chosen.length > 1 ? 's' : '') + '…', '#8b7dff');
   let resp;
-  try { resp = await chrome.runtime.sendMessage({ action: 'gptFill', questions: fresh }); }
-  catch (e) { jfFlash('AI call failed — is the JobFlow server running? ' + e.message, '#ff4d4f'); return 0; }
-  if (!resp || !resp.success) { jfFlash('AI error: ' + ((resp && resp.error) || 'unknown'), '#ff4d4f'); return 0; }
+  try { resp = await chrome.runtime.sendMessage({ action: 'gptFill', questions }); }
+  catch (e) { jfFlash('AI call failed — is the JobFlow server running? ' + e.message, '#ff4d4f'); return; }
+  if (!resp || !resp.success) { jfFlash('AI error: ' + ((resp && resp.error) || 'unknown'), '#ff4d4f'); return; }
   const data = resp.data || {};
-  if (data.disabled) { jfFlash('Turn on API mode + add a key in Settings → AI to let it answer questions.', '#f59e0b'); return 0; }
-  if (data.error) { jfFlash('AI: ' + data.error, '#ff4d4f'); return 0; }
+  if (data.disabled) { jfFlash('Turn on API mode + add a key in Settings → AI to let it answer questions.', '#f59e0b'); return; }
+  if (data.error) { jfFlash('AI: ' + data.error, '#ff4d4f'); return; }
 
-  console.log('[JobFlow AI] ← model answered:', data.answers);
-  const labelById = {};
-  fresh.forEach((q) => { labelById[q.id] = q.label; });
+  const byToken = {};
+  chosen.forEach((c) => { byToken[c.token] = c; });
   const answeredIds = new Set();
   let filled = 0;
   for (const a of (data.answers || [])) {
     if (!a) continue;
     answeredIds.add(a.id);
-    const label = labelById[a.id] || '';
-    if (!a.answer || !String(a.answer).trim()) { jfLogQA(label, '', 'skip'); continue; }
-    const tgt = targets.find((x) => x.token === a.id);
-    if (!tgt) continue;
+    const c = byToken[a.id];
+    if (!c) continue;
+    if (!a.answer || !String(a.answer).trim()) { jfLogQA(c.label, '', 'skip'); continue; }
     const ans = String(a.answer);
     let ok = false;
     try {
-      if (tgt.type === 'text' || tgt.type === 'textarea') { setVal(tgt.el, ans); ok = true; }
-      else if (tgt.type === 'select') { ok = selectOption(tgt.el, ans, null); }
-      else if (tgt.type === 'combobox') { ok = await openAndPickOption(tgt.el, ans, null, '#8b7dff'); }
-      else if (tgt.type === 'radio') {
-        const hit = tgt.els.find((e) => {
+      if (c.type === 'text' || c.type === 'textarea') { setVal(c.el, ans); ok = true; }
+      else if (c.type === 'select') { ok = selectOption(c.el, ans, null); }
+      else if (c.type === 'combobox') { ok = await openAndPickOption(c.el, ans, null, '#8b7dff'); }
+      else if (c.type === 'radio') {
+        const hit = c.els.find((e) => {
           const ot = (describe(e).optionText || e.value || '').toLowerCase();
           return JFMatcher.matchOption(ans, ot, null) || ot === ans.toLowerCase() || ot.includes(ans.toLowerCase());
         });
@@ -754,14 +849,8 @@ async function aiFill() {
       }
     } catch (e) { /* skip this answer */ }
     if (ok) filled++;
-    // Show it either way: green-ish AI value if we placed it, amber "not
-    // answered" if the model returned nothing usable or we couldn't select it.
-    jfLogQA(label, ok ? ans : '', ok ? 'ai' : 'skip');
+    jfLogQA(c.label, ok ? ans : '', ok ? 'ai' : 'skip');
   }
-  // Any question the model didn't return at all → mark it unanswered, so the
-  // panel accounts for every question we sent.
-  fresh.forEach((q) => { if (!answeredIds.has(q.id)) jfLogQA(q.label, '', 'skip'); });
-  console.log('[JobFlow AI] ✓ filled', filled, 'of', (data.answers || []).length, 'answers into the form');
-  if (filled > 0) jfFlash('✨ AI answered ' + filled + ' question' + (filled > 1 ? 's' : '') + ' (purple) — review them before submitting!', '#8b7dff');
-  return filled;
+  chosen.forEach((c) => { if (!answeredIds.has(c.token)) jfLogQA(c.label, '', 'skip'); });
+  if (filled > 0) jfFlash('✨ AI answered ' + filled + ' question' + (filled > 1 ? 's' : '') + ' (purple) — review before submitting!', '#8b7dff');
 }
