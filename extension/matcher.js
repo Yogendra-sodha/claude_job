@@ -157,8 +157,12 @@
     if (/salary|compensation|desired pay|expected pay/.test(hay)) return 'salary';
     if (/notice period|start date|earliest|when can you start|availability|available to start|looking to start|start a (new )?position/.test(hay)) return 'notice';
     if (/how did you (hear|find|learn)|referral source|hear about|\bsource\b/.test(hay)) return 'source';
-    if (/authori[sz]ed to work|legally authori|eligible to work|right to work|work (permit|authori)/.test(hay)) return 'authorized';
-    if (/sponsor|visa/.test(hay)) return 'sponsorship';
+    // Sponsorship is checked BEFORE work-authorization: a question like "require
+    // any immigration support or sponsorship to maintain U.S. work authorization"
+    // is about sponsorship, but the trailing "work authori…" would otherwise trip
+    // the authorized rule and fill the wrong profile field.
+    if (/sponsor|\bvisa\b|require any immigration|immigration[- ]related (support|assistance)/.test(hay)) return 'sponsorship';
+    if (/authori[sz]ed to work|legally authori|eligible to work|right to work|work (permit|authori)/.test(hay) && !/sponsor/.test(hay)) return 'authorized';
     if (/relocat|willing to (move|relocate|transfer)/.test(hay)) return 'relocate';
     if (/18 ?years|over ?18|at least ?18|legal age|older\b/.test(hay)) return 'age18';
     if (/years? (of )?experience/.test(hay)) return 'years';
