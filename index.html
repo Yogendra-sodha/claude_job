@@ -201,6 +201,7 @@
         <div class="field"><label>Willing to relocate?</label><select id="p_relocate"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
         <div class="field"><label>Employed by us before?</label><select id="p_prev_emp"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
         <div class="field"><label>Subject to non-compete?</label><select id="p_noncompete"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
+        <div class="field"><label>Default answer to unlisted Yes/No compliance questions</label><select id="p_complianceDefault"><option>No</option><option>Yes</option></select></div>
       </div>
 
       <h3 style="margin: 24px 0 6px; padding-top: 14px; border-top: 1px solid var(--line);">🎓 Education entries</h3>
@@ -435,7 +436,7 @@ function goTab(v){document.querySelector('#nav button[data-v="'+v+'"]').click();
 
 /* ---------- PROFILE ---------- */
 const PF=['name','title','email','phone','location','linkedin','portfolio','years','summary','skills','experience','education'];
-const DEMO_F=['gender','race','veteran','disability','age18','contact_emp','sponsorship','authorized','pronouns','address1','address2','city','state','zip','country','github','website','edu_level','university','degree','major','gpa','salary','notice','source','relocate','prev_emp','noncompete'];
+const DEMO_F=['gender','race','veteran','disability','age18','contact_emp','sponsorship','authorized','pronouns','address1','address2','city','state','zip','country','github','website','edu_level','university','degree','major','gpa','salary','notice','source','relocate','prev_emp','noncompete','complianceDefault'];
 // ---- Repeatable education / work entry editors ----
 const EDU_COLS=[['school','School / University'],['degree','Degree'],['major','Major / Field'],['gpa','GPA'],['city','City'],['state','State'],['country','Country']];
 const WORK_COLS=[['company','Company'],['jobTitle','Job Title'],['location','Location'],['startDate','Start (MM/YYYY)'],['endDate','End (MM/YYYY)']];
@@ -471,6 +472,8 @@ function loadProfile(){
   PF.forEach(k=>{if($('p_'+k))$('p_'+k).value=p[k]||''});
   let d={}; try { d = typeof p.demographics === 'string' ? JSON.parse(p.demographics) : p.demographics||{}; } catch(e){}
   DEMO_F.forEach(k=>{if($('p_'+k))$('p_'+k).value=d[k]||''});
+  // complianceDefault has no empty option — show its default when unset
+  if($('p_complianceDefault')&&!d.complianceDefault)$('p_complianceDefault').value='No';
   // Seed education list from the old single fields the first time, so nothing is lost
   let eduL=Array.isArray(d.educationList)?d.educationList:[];
   if(!eduL.length && (d.university||d.degree||d.major||d.gpa)) eduL=[{school:d.university||'',degree:d.degree||'',major:d.major||'',gpa:d.gpa||''}];
