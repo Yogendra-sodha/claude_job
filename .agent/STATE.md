@@ -47,3 +47,8 @@ Upgrade JobFlow from a static file://index.html app to a full-stack local applic
 - User wants Jobright-like experience: seamless, one-click, no manual data transfer
 - User will be away — work autonomously, make sensible decisions
 - Original backlog items R8-R13 are paused; this persistence upgrade takes priority
+- Work happens on the `develop` branch (origin/develop); origin/master is behind by design — merge at the end if desired.
+- v2.13.0 (2026-08-05): review-and-select AI fill. ⚡ never calls AI (fills profile + answers
+  unclassified yes/no compliance from My Profile → "Default answer" = No). New 🤖 button opens a
+  review panel to tick which leftover questions to batch-send. Spec: docs/superpowers/specs/
+  2026-08-05-ai-review-panel-design.md; plan: docs/superpowers/plans/2026-08-05-ai-review-panel.md.
