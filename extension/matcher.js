@@ -157,6 +157,13 @@
     if (/salary|compensation|desired pay|expected pay/.test(hay)) return 'salary';
     if (/notice period|start date|earliest|when can you start|availability|available to start|looking to start|start a (new )?position/.test(hay)) return 'notice';
     if (/how did you (hear|find|learn)|referral source|hear about|\bsource\b/.test(hay)) return 'source';
+    // Named compliance questions — map to the specific profile fields the user
+    // already sets (noncompete / prev_emp / contact_emp), so their stored answer
+    // is used instead of the generic default. Kept specific to avoid false hits.
+    if (/non[- ]?compete|restrictive covenant/.test(hay)) return 'noncompete';
+    if (/previously (been )?employed|employed by (us|this|the company) (before|previously)|former employee|eligible for rehire|worked (here|for us) before/.test(hay)) return 'prev_emp';
+    if (/relative|family member|someone you (know|are related)|related to .*(employee|current)|friend .*(employ|work here)/.test(hay)) return 'contact_emp';
+
     // Sponsorship is checked BEFORE work-authorization: a question like "require
     // any immigration support or sponsorship to maintain U.S. work authorization"
     // is about sponsorship, but the trailing "work authori…" would otherwise trip
@@ -302,6 +309,7 @@
       contact_emp: d.contact_emp || '',
       prev_emp: d.prev_emp || '',
       noncompete: d.noncompete || '',
+      complianceDefault: d.complianceDefault || 'No',
     };
   }
 
@@ -375,7 +383,36 @@
     return -1;
   }
 
-  const api = { classify, detectSection, detectKey, resolveValue, resolveEntry, isEntryKey, entryListFor, buildProfile, matchOption, pickOption, kindFor, SINGLE_FILL, words };
+  // --------------------------------------------------- QUESTION CATEGORIES
+  // Used by the extension's review-and-select AI step to decide, for a field the
+  // rules could NOT own, how to handle it: fill a compliance default (⚡), or list
+  // it in the 🤖 review panel (essay pre-checked, factual dropdown unchecked).
+
+  // A yes/no question: 1-3 real options (placeholder stripped) and one is a
+  // No/decline choice. Distinguishes compliance dropdowns from factual ones.
+  function isYesNoOptions(options) {
+    const real = (options || []).map((o) => (o || '').trim())
+      .filter((o) => o && !/^(select\b.*|choose\b.*|please\b.*|make a selection|-+)$/i.test(o));
+    if (real.length < 1 || real.length > 3) return false;
+    const declineRe = /decline|prefer ?not|no ?answer/i;
+    return real.some((o) => /\bno\b|\bfalse\b/i.test(o) || declineRe.test(o));
+  }
+
+  const ESSAY_RE = /why|describe|explain|tell us|what (was|were|makes|are you|excites|motivates|interests)|how (would|do|did) you|in your own words|motivat|proud|challeng|strength|weakness|interested in (joining|working)/i;
+
+  // Categorize a field the rules could not own -> 'essay'|'compliance'|'multi'|'short'.
+  function categorizeQuestion(field, options) {
+    const tag = (field.tag || '').toLowerCase();
+    const label = field.label || '';
+    if (tag === 'textarea') return 'essay';
+    const isControl = tag === 'select' || field.type === 'radio' || field.type === 'checkbox'
+      || field.role === 'combobox' || field.role === 'listbox' || field.haspopup === 'listbox';
+    if (isControl) return isYesNoOptions(options) ? 'compliance' : 'multi';
+    if (ESSAY_RE.test(label)) return 'essay';
+    return 'short';
+  }
+
+  const api = { classify, detectSection, detectKey, resolveValue, resolveEntry, isEntryKey, entryListFor, buildProfile, matchOption, pickOption, kindFor, isYesNoOptions, categorizeQuestion, SINGLE_FILL, words };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.JFMatcher = api;
 })(typeof self !== 'undefined' ? self : this);
