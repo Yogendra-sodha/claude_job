@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "JobFlow Autofill v2",
-  "version": "2.13.0",
+  "version": "2.13.1",
   "description": "Section-aware autofill for Workday, Greenhouse, Lever, iCIMS, Ashby and career pages, with main-world value setting for reliable React/Angular fills.",
   "permissions": [],
   "host_permissions": ["*://*/*", "http://127.0.0.1:3000/*", "http://localhost:3000/*"],

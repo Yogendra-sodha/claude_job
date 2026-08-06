@@ -15,7 +15,9 @@ function deepQueryAll(selector, root, out) {
   try {
     root.querySelectorAll(selector).forEach((e) => out.push(e));
     root.querySelectorAll('*').forEach((e) => {
-      if (e.shadowRoot) deepQueryAll(selector, e.shadowRoot, out);
+      // Never descend into our own panel's shadow root — its review checkboxes
+      // are not form fields to fill.
+      if (e.shadowRoot && e.id !== 'jf-panel-host') deepQueryAll(selector, e.shadowRoot, out);
     });
   } catch (e) { /* detached/cross-origin — skip */ }
   return out;
@@ -48,6 +50,25 @@ const jfPanelSeen = new Set();
 const JF_SRC = { profile: { c: '#3ecf8e', t: 'from profile' }, ai: { c: '#8b7dff', t: 'AI' }, compliance: { c: '#f5a623', t: 'default (No)' }, skip: { c: '#f59e0b', t: 'not answered' } };
 function jfPanelBuild() {
   if (jfPanelEl) return jfPanelEl;
+  // Render inside a Shadow DOM so the host site's CSS can't reach the panel.
+  // Un-isolated, inherited properties (line-height, letter-spacing, writing-mode,
+  // font) bleed in from aggressive ATS stylesheets and garble/overlap the rows —
+  // this is the fix for the "jumbled panel" report.
+  const host = document.createElement('div');
+  host.id = 'jf-panel-host';
+  host.style.cssText = 'all:initial';
+  document.body.appendChild(host);
+  const shadow = host.attachShadow({ mode: 'open' });
+  const reset = document.createElement('style');
+  // :host neutralises anything inherited from the page; * gives every node clean
+  // text defaults so nothing the site set can cross the boundary.
+  reset.textContent =
+    ':host{all:initial}' +
+    '*{box-sizing:border-box;margin:0;padding:0;font-family:"Segoe UI",Arial,sans-serif;' +
+    'letter-spacing:normal;word-spacing:normal;text-transform:none;line-height:normal;' +
+    'writing-mode:horizontal-tb;direction:ltr;text-align:left;white-space:normal;' +
+    'font-style:normal;text-indent:0;float:none;position:static}';
+  shadow.appendChild(reset);
   jfPanelEl = document.createElement('div');
   jfPanelEl.id = 'jf-panel';
   jfPanelEl.style.cssText =
@@ -70,7 +91,7 @@ function jfPanelBuild() {
   jfPanelList = document.createElement('div');
   jfPanelList.style.cssText = 'overflow-y:auto;padding:2px 0';
   jfPanelEl.appendChild(head); jfPanelEl.appendChild(jfReviewSection); jfPanelEl.appendChild(jfPanelList);
-  document.body.appendChild(jfPanelEl);
+  shadow.appendChild(jfPanelEl);
   jfPanelCount = jfPanelEl.querySelector('#jf-panel-count');
   return jfPanelEl;
 }
@@ -467,12 +488,26 @@ async function fillCustomDropdowns(P, filledKeys, entryCount) {
   return n;
 }
 
+// Does this label read like a real yes/no question we should auto-answer with
+// the default? Filters out combobox placeholders ("Start typing…"), option text
+// ("Prefer not to answer"), and non-questions — so the compliance pass never
+// mis-fills or mis-labels demographic / searchable dropdowns.
+function jfIsYesNoQuestion(label) {
+  const s = (label || '').replace(/\s+/g, ' ').trim();
+  if (s.length < 8) return false;
+  if (/^(start typing|select\b|choose\b|search\b|please select|make a selection|prefer not|decline|yes\b|no\b)/i.test(s)) return false;
+  return /\?/.test(s)
+    || /^(are|do|does|did|have|has|had|will|would|can|could|should|is|was|were|by (checking|clicking))\b/i.test(s)
+    || /\b(are|do|have|will|can|would|did) you\b/i.test(s);
+}
+
 // =============================================
 // COMPLIANCE PASS — answer unclassified Yes/No questions from the saved default
 // ("No"), so trivial compliance questions (relatives employed, non-compete,
 // previously employed…) never reach the paid AI. Only touches fields the matcher
-// could NOT classify; a recognized-but-empty yes/no (e.g. age18) is left alone.
-// Each fill is logged to the answers panel so it can be overridden before submit.
+// could NOT classify AND whose label reads like a yes/no question; a
+// recognized-but-empty yes/no (e.g. age18) is left alone. Each fill is logged to
+// the answers panel so it can be overridden before submit.
 // =============================================
 async function fillComplianceDefaults(P) {
   if (typeof JFMatcher === 'undefined') return 0;
@@ -489,6 +524,7 @@ async function fillComplianceDefaults(P) {
     if (rect.width === 0 && rect.height === 0) continue;
     const f = describe(el);
     if (JFMatcher.classify(f).key) continue;                 // rules own it → skip
+    if (!jfIsYesNoQuestion(f.label)) continue;               // not a real yes/no question
     if (el.tagName === 'SELECT') {
       if (el.selectedIndex > 0) continue;                    // already answered
       const opts = [...el.options].map((o) => o.text);
@@ -524,6 +560,7 @@ async function fillComplianceDefaults(P) {
     if (cur && !/select|choose|make a selection|please|^[-–—\s.]*$/i.test(cur)) continue;
     const f = describe(t);
     if (JFMatcher.classify(f).key) continue;
+    if (!jfIsYesNoQuestion(f.label)) continue;   // skip placeholders / demographic comboboxes
     // openAndPickOption only selects when an option matches "No"; a factual
     // dropdown with no No/decline option is left untouched (returns false).
     if (await openAndPickOption(t, def, 'yesno', '#f5a623')) { jfLogQA(f.label || f.idname, def, 'compliance'); n++; }
