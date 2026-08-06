@@ -38,4 +38,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.tabs.sendMessage(sender.tab.id, { action: 'jf-fill', nonce: request.nonce })
       .catch(() => { /* some frames may have no listener — fine */ });
   }
+
+  if (request.action === 'reviewAllFrames' && sender.tab && sender.tab.id != null) {
+    // Broadcast the 🤖 review trigger to every frame (the form often lives in one)
+    chrome.tabs.sendMessage(sender.tab.id, { action: 'jf-review', nonce: request.nonce })
+      .catch(() => { /* some frames may have no listener — fine */ });
+  }
 });
