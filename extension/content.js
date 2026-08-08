@@ -573,21 +573,37 @@ async function fillComplianceDefaults(P) {
 // =============================================
 function describe(el) {
   const isChoice = el.type === 'radio' || el.type === 'checkbox';
+  const role = el.getAttribute('role');
+  const haspopup = el.getAttribute('aria-haspopup');
   const spec = specificLabel(el);
   const cont = containerLabel(el);
   // A choice whose own label is SHORT ("Yes", "Male") is an option — its
   // question lives in the container. A choice with a full-sentence label
   // ("I currently work here", "I agree to…") is its own question.
   const shortOpt = spec && spec.split(/\s+/).length <= 3;
+  // A combobox/select trigger often exposes its PLACEHOLDER or current value as
+  // its accessible name ("Select One", "No") while the real QUESTION sits in the
+  // container — Workday does exactly this, which is why eligibility/sponsorship
+  // dropdowns were read as "Select One Required" and never recognized. Prefer the
+  // container question when the trigger's name is just a placeholder, or when it
+  // is a combobox with a short value name and the container reads as a question.
+  const specClean = (spec || '').replace(/\s*\*?\s*required\s*$/i, '').trim();
+  const isCombo = role === 'combobox' || role === 'listbox' || haspopup === 'listbox';
+  // Only when the combobox's whole accessible name is a placeholder ("Select
+  // One", "Choose…") do we fall back to the container question. A combobox with
+  // a REAL name (e.g. "Data Privacy Consent") keeps it — that name is correct
+  // and the container is often a polluted page heading.
+  const specIsPlaceholder = /^(select\b|choose\b|please select|make a selection|pick one\b|--)/i.test(specClean);
+  const preferContainer = !isChoice && cont && isCombo && specIsPlaceholder;
   return {
     idname: [el.name, el.id, el.getAttribute('data-automation-id'), el.getAttribute('data-testid'), el.getAttribute('data-field-name')].filter(Boolean).join(' '),
-    label: isChoice ? (shortOpt ? (cont || spec) : spec) : (spec || cont),
+    label: isChoice ? (shortOpt ? (cont || spec) : spec) : (preferContainer ? cont : (spec || cont)),
     section: cont,
     optionText: isChoice ? spec : '',
     type: el.type,
     tag: el.tagName.toLowerCase(),
-    role: el.getAttribute('role'),
-    haspopup: el.getAttribute('aria-haspopup'),
+    role: role,
+    haspopup: haspopup,
   };
 }
 

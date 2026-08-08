@@ -23,6 +23,7 @@
       tag: el.tagName.toLowerCase(),
       type: el.type || null,
       role: el.getAttribute('role'),
+      haspopup: el.getAttribute('aria-haspopup'),
       name: el.name || el.getAttribute('name'),
       id: el.id || null,
       placeholder: el.placeholder || null,

@@ -41,16 +41,24 @@ function toField(rec) {
   const container = rec.containerLabel || '';
   const isChoice = rec.type === 'radio' || rec.type === 'checkbox';
   const shortOpt = specific && specific.split(/\s+/).length <= 3;
+  // Mirrors describe(): a combobox/select trigger whose accessible name is a
+  // placeholder ("Select One") or short value hides the real question in the
+  // container (Workday), so prefer the container question there.
+  const specClean = (specific || '').replace(/\s*\*?\s*required\s*$/i, '').trim();
+  const isCombo = rec.role === 'combobox' || rec.role === 'listbox' || rec.haspopup === 'listbox';
+  const specIsPlaceholder = /^(select\b|choose\b|please select|make a selection|pick one\b|--)/i.test(specClean);
+  const preferContainer = !isChoice && container && isCombo && specIsPlaceholder;
   return {
     idname: [rec.name, rec.id, rec.automationId, rec.testId].filter(Boolean).join(' '),
     // A short choice label ("Yes") is an option -> question is in the container;
     // a full-sentence choice ("I currently work here") is its own question.
-    label: isChoice ? (shortOpt ? (container || specific) : specific) : (specific || container),
+    label: isChoice ? (shortOpt ? (container || specific) : specific) : (preferContainer ? container : (specific || container)),
     section: container,
     optionText: isChoice ? specific : '',
     type: rec.type,
     tag: rec.tag,
     role: rec.role,
+    haspopup: rec.haspopup,
     options: rec.options,
   };
 }
