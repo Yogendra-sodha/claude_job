@@ -30,6 +30,7 @@ app.use('/api/materials', require('./routes/materials'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/data', require('./routes/data'));
 app.use('/api/gpt-fill', require('./routes/gptfill'));
+app.use('/api/jobs', require('./routes/jobs'));
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -51,9 +52,21 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message });
 });
 
-// Ensure job-sourcing tables exist (extended with the daily scheduler in a later task)
+// Ensure job-sourcing tables exist, then run a daily pull in-process (no cron dep):
+// on boot and every 6h, pull all boards if the last pull is > 20h old.
+const { pullAll } = require('./jobs/pull');
+async function maybePull() {
+  try {
+    const r = await require('./db').query('SELECT MAX(last_pulled) AS last FROM companies');
+    const last = r.rows[0].last ? new Date(r.rows[0].last).getTime() : 0;
+    if (Date.now() - last > 20 * 3600 * 1000) {
+      console.log('[jobs] daily pull starting…');
+      pullAll().then((x) => console.log('[jobs] pull done', JSON.stringify(x))).catch((e) => console.warn('[jobs] pull failed', e.message));
+    }
+  } catch (e) { console.warn('[jobs] scheduler:', e.message); }
+}
 require('./jobs/db').ensureJobsTables()
-  .then(() => console.log('  ✓ job tables ready'))
+  .then(() => { console.log('  ✓ job tables ready'); maybePull(); setInterval(maybePull, 6 * 3600 * 1000); })
   .catch((e) => console.warn('  job tables init failed:', e.message));
 
 // Start server on localhost only (security)
