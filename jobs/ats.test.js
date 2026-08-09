@@ -1,0 +1,11 @@
+const A = require('./ats');
+let fail = 0; const ok = (c, l) => { console.log(c ? 'PASS' : 'FAIL', l); if (!c) fail++; };
+const gh = A.normalizeGreenhouse(require('./__fixtures__/greenhouse.json'));
+ok(gh.length >= 1 && !!gh[0].extId && !!gh[0].title && !!gh[0].url, 'greenhouse shape');
+const lv = A.normalizeLever(require('./__fixtures__/lever.json'));
+ok(Array.isArray(lv) && (lv.length === 0 || (!!lv[0].extId && !!lv[0].url && !!lv[0].title)), 'lever shape');
+const ash = A.normalizeAshby(require('./__fixtures__/ashby.json'));
+ok(ash.length >= 1 && !!ash[0].extId && !!ash[0].title && !!ash[0].url, 'ashby shape');
+ok(typeof gh[0].postedAt === 'string' || gh[0].postedAt === null, 'postedAt normalized');
+ok(typeof gh[0].remote === 'boolean' && typeof ash[0].remote === 'boolean', 'remote is boolean');
+console.log(fail ? '\n' + fail + ' FAILED' : '\nALL PASSED'); process.exitCode = fail ? 1 : 0;
