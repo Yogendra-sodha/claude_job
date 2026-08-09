@@ -1,0 +1,10 @@
+const D = require('./detect');
+let fail = 0;
+const eq = (g, w, l) => { const p = JSON.stringify(g) === JSON.stringify(w); console.log(p ? 'PASS' : 'FAIL', l, JSON.stringify(g)); if (!p) fail++; };
+eq(D.detectFromHtml('<script src="https://boards.greenhouse.io/embed/job_board/js?for=acme"></script>'), { ats: 'greenhouse', token: 'acme' }, 'gh embed');
+eq(D.detectFromHtml('<a href="https://job-boards.greenhouse.io/acme">Careers</a>'), { ats: 'greenhouse', token: 'acme' }, 'gh board');
+eq(D.detectFromHtml('<iframe src="https://jobs.lever.co/foocorp"></iframe>'), { ats: 'lever', token: 'foocorp' }, 'lever');
+eq(D.detectFromHtml('fetch("https://api.ashbyhq.com/posting-api/job-board/barinc")'), { ats: 'ashby', token: 'barinc' }, 'ashby');
+eq(D.detectFromHtml('link to https://jobs.ashbyhq.com/Ramp/'), { ats: 'ashby', token: 'Ramp' }, 'ashby jobs url');
+eq(D.detectFromHtml('<h1>We use Workday</h1>'), null, 'none');
+console.log(fail ? '\n' + fail + ' FAILED' : '\nALL PASSED'); process.exitCode = fail ? 1 : 0;
