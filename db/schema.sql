@@ -92,3 +92,42 @@ CREATE INDEX IF NOT EXISTS idx_ai_requests_created ON ai_requests(created_at DES
 CREATE INDEX IF NOT EXISTS idx_contacts_app_id ON contacts(app_id);
 CREATE INDEX IF NOT EXISTS idx_materials_app_id ON materials(app_id);
 CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(status);
+
+-- =====================================================================
+-- Job sourcing (ATS boards): company registry + pulled jobs
+-- =====================================================================
+CREATE TABLE IF NOT EXISTS companies (
+  id          SERIAL PRIMARY KEY,
+  name        TEXT NOT NULL,
+  ats         TEXT NOT NULL,              -- 'greenhouse' | 'lever' | 'ashby'
+  token       TEXT NOT NULL,              -- board token / company slug
+  website     TEXT,
+  source      TEXT DEFAULT 'manual',      -- 'seed' | 'yc' | 'manual'
+  active      BOOLEAN DEFAULT TRUE,
+  last_pulled TIMESTAMPTZ,
+  last_error  TEXT,
+  added_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE (ats, token)
+);
+
+CREATE TABLE IF NOT EXISTS jobs (
+  id          SERIAL PRIMARY KEY,
+  company_id  INTEGER REFERENCES companies(id) ON DELETE CASCADE,
+  company     TEXT NOT NULL,
+  ats         TEXT NOT NULL,
+  ext_id      TEXT NOT NULL,              -- ATS job id (dedupe key)
+  title       TEXT NOT NULL,
+  location    TEXT,
+  remote      BOOLEAN DEFAULT FALSE,
+  url         TEXT NOT NULL,
+  department  TEXT,
+  posted_at   TIMESTAMPTZ,
+  score       INTEGER DEFAULT 0,
+  description TEXT,
+  first_seen  TIMESTAMPTZ DEFAULT NOW(),
+  last_seen   TIMESTAMPTZ DEFAULT NOW(),
+  active      BOOLEAN DEFAULT TRUE,
+  UNIQUE (ats, ext_id)
+);
+CREATE INDEX IF NOT EXISTS jobs_posted_idx ON jobs (posted_at DESC);
+CREATE INDEX IF NOT EXISTS jobs_active_idx ON jobs (active, first_seen DESC);

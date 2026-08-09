@@ -51,11 +51,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message });
 });
 
+// Ensure job-sourcing tables exist (extended with the daily scheduler in a later task)
+require('./jobs/db').ensureJobsTables()
+  .then(() => console.log('  ✓ job tables ready'))
+  .catch((e) => console.warn('  job tables init failed:', e.message));
+
 // Start server on localhost only (security)
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`\n  ⚡ JobFlow server running at http://localhost:${PORT}\n`);
   console.log(`  Open http://localhost:${PORT} in your browser`);
   console.log(`  Press Ctrl+C to stop\n`);
 });
-
-
