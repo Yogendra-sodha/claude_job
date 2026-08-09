@@ -16,8 +16,9 @@ router.get('/', async (req, res) => {
     if (req.query.new === '1') where += ` AND first_seen::date = CURRENT_DATE`;
     const rows = (await query(
       `SELECT id, company, ats, title, location, remote, url, department, posted_at, score, first_seen,
+              LEFT(description, 2000) AS description,
               (first_seen::date = CURRENT_DATE) AS is_new
-         FROM jobs WHERE ${where} ORDER BY ${sort} LIMIT 500`, params)).rows;
+         FROM jobs WHERE ${where} ORDER BY ${sort} LIMIT 300`, params)).rows;
     const totals = (await query(
       `SELECT COUNT(*)::int total, COUNT(*) FILTER (WHERE first_seen::date = CURRENT_DATE)::int new_today
          FROM jobs WHERE active = TRUE`)).rows[0];

@@ -248,21 +248,50 @@
 
   <!-- FEED -->
   <section class="view" id="v-feed">
-    <h2>Job Feed — ranked for you</h2>
-    <p class="sub">Fresh jobs pulled from open job APIs, automatically scored against your profile and sorted best-match-first. Stop scrolling boards — only read what fits.</p>
+    <h2>Job Feed — Data / Analytics roles, ranked for you</h2>
+    <p class="sub">Live Data Engineer / Data Analyst / Analytics Engineer roles pulled straight from company ATS boards (Greenhouse, Lever, Ashby) — the same platforms the ⚡ extension autofills, so every job is one-click applyable. Refreshed daily, US + remote-US, NYC-metro ranked higher.</p>
     <div class="card">
       <div class="grid2">
-        <div class="field"><label>Search term</label><input id="jf_q" placeholder="e.g. mechanical design engineer"></div>
-        <div class="field"><label>Hide jobs below</label><select id="jf_min">
-          <option value="0">Show all</option>
-          <option value="20">20% match</option>
-          <option value="30" selected>30% match</option>
-          <option value="40">40% match</option>
-          <option value="50">50% match</option>
+        <div class="field"><label>Filter by keyword (optional)</label><input id="jf_q" placeholder="e.g. analytics engineer, dbt, spark"></div>
+        <div class="field"><label>Posted within</label><select id="jf_days">
+          <option value="7">Past week</option>
+          <option value="14">Past 2 weeks</option>
+          <option value="30" selected>Past month</option>
+          <option value="45">Past 45 days</option>
+          <option value="90">Past 3 months</option>
         </select></div>
       </div>
-      <details style="margin-bottom:12px">
-        <summary class="small" style="cursor:pointer">Optional: add Adzuna (free API key) for local, non-remote jobs in your country/city</summary>
+      <div class="grid2">
+        <div class="field"><label>Sort</label><select id="jf_sort"><option value="best" selected>Best match (NYC + fresh first)</option><option value="new">Newest first</option></select></div>
+        <div class="field"><label>Hide jobs below</label><select id="jf_min">
+          <option value="0" selected>Show all</option>
+          <option value="20">20% profile match</option>
+          <option value="30">30% profile match</option>
+          <option value="40">40% profile match</option>
+        </select></div>
+      </div>
+      <div class="row" style="flex-wrap:wrap;gap:10px">
+        <button class="btn" id="feedBtn">Load jobs</button>
+        <button class="btn ghost" id="jf_refresh">↻ Refresh from boards</button>
+        <label class="small" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="jf_hide" checked> Hide jobs already in my Tracker</label>
+        <label class="small" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="jf_remote"> Also search remote boards</label>
+        <span class="small" id="feedStatus"></span>
+      </div>
+      <details style="margin-top:12px">
+        <summary class="small" style="cursor:pointer"><b>Manage companies</b> — the boards we pull from (<span id="jf_ccount">…</span>)</summary>
+        <div style="margin-top:10px">
+          <div class="row" style="gap:8px;flex-wrap:wrap">
+            <input id="jf_addurl" placeholder="Paste a company careers URL (e.g. https://acme.com/careers)" style="flex:1;min-width:260px">
+            <button class="btn sm" id="jf_addbtn">+ Add</button>
+            <button class="btn ghost sm" id="jf_seed">Load starter list</button>
+            <button class="btn ghost sm" id="jf_importyc">Import YC batch</button>
+          </div>
+          <p class="hint" id="jf_cmsg" style="margin:8px 0 0">Add-by-URL auto-detects Greenhouse / Lever / Ashby. Big enterprises on Workday/Oracle aren't supported yet (Phase 2).</p>
+          <div id="jf_companies" class="small" style="margin-top:10px;max-height:240px;overflow:auto"></div>
+        </div>
+      </details>
+      <details style="margin-top:10px">
+        <summary class="small" style="cursor:pointer">Optional: Adzuna key (adds local, all-industry jobs when "remote boards" is on)</summary>
         <div class="grid2" style="margin-top:10px">
           <div class="field"><label>Country</label><select id="jf_country">
             <option value="us">United States</option><option value="in">India</option><option value="gb">United Kingdom</option><option value="ca">Canada</option><option value="au">Australia</option><option value="de">Germany</option><option value="fr">France</option><option value="nl">Netherlands</option><option value="sg">Singapore</option><option value="za">South Africa</option><option value="it">Italy</option><option value="es">Spain</option><option value="pl">Poland</option><option value="br">Brazil</option><option value="mx">Mexico</option><option value="nz">New Zealand</option><option value="at">Austria</option><option value="be">Belgium</option><option value="ch">Switzerland</option>
@@ -271,9 +300,8 @@
           <div class="field"><label>Adzuna App ID</label><input id="jf_aid"></div>
           <div class="field"><label>Adzuna App Key</label><input id="jf_akey"></div>
         </div>
-        <p class="hint">Free key at developer.adzuna.com. The built-in sources are mostly remote/tech jobs — Adzuna adds all industries in your own city.</p>
+        <p class="hint">Free key at developer.adzuna.com.</p>
       </details>
-      <div class="row"><button class="btn" id="feedBtn">Fetch &amp; rank jobs</button><label class="small" style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="jf_hide" checked> Hide jobs already in my Tracker</label><span class="small" id="feedStatus"></span></div>
     </div>
     <div id="feedList"></div>
   </section>
@@ -431,6 +459,7 @@ document.querySelectorAll('#nav button').forEach(b=>b.onclick=()=>{
   if(b.dataset.v==='home'){renderHome();renderToday()}
   if(b.dataset.v==='tracker')renderTracker();
   if(b.dataset.v==='outreach')renderOutreach();
+  if(b.dataset.v==='feed'){loadCompanies();if(!feedJobs||!feedJobs.length)fetchFeed();}
 });
 function goTab(v){document.querySelector('#nav button[data-v="'+v+'"]').click();window.scrollTo({top:0,behavior:'smooth'})}
 
@@ -841,37 +870,68 @@ function scoreText(txt,mine){
 }
 let feedJobs=[];
 async function fetchFeed(){
-  const p=store.get('profile',{});
-  const q=($('jf_q').value.trim()||p.title||'').toLowerCase();
-  if(!q){toast('Enter a search term (or set a target title in Profile)');return}
+  const q=$('jf_q').value.trim();
+  const days=$('jf_days').value, sort=$('jf_sort').value;
   const s=store.get('settings',{});
   s.adzuna={country:$('jf_country').value,where:$('jf_where').value.trim(),id:$('jf_aid').value.trim(),key:$('jf_akey').value.trim()};
   store.set('settings',s);
-  $('feedBtn').disabled=true;$('feedStatus').textContent='Fetching…';$('feedList').innerHTML='';
-  const qWords=q.split(/\s+/).filter(w=>w.length>2);
-  const matchQ=t=>{t=(t||'').toLowerCase();return qWords.some(w=>t.includes(w))};
-  const srcs=[
-    ['Remotive',async()=>{const r=await fetch('https://remotive.com/api/remote-jobs?search='+encodeURIComponent(q)+'&limit=60');const d=await r.json();return (d.jobs||[]).map(j=>({title:j.title,company:j.company_name,loc:j.candidate_required_location||'Remote',url:j.url,date:(j.publication_date||'').slice(0,10),desc:stripHtml(j.description)}))}],
-    ['Arbeitnow',async()=>{const r=await fetch('https://www.arbeitnow.com/api/job-board-api');const d=await r.json();return (d.data||[]).filter(j=>matchQ(j.title+' '+(j.tags||[]).join(' '))).map(j=>({title:j.title,company:j.company_name,loc:j.location||(j.remote?'Remote':''),url:j.url,date:j.created_at?new Date(j.created_at*1000).toISOString().slice(0,10):'',desc:stripHtml(j.description)}))}],
-    ['RemoteOK',async()=>{const r=await fetch('https://remoteok.com/api');const d=await r.json();return d.filter(j=>j&&j.position&&matchQ(j.position+' '+(j.tags||[]).join(' '))).map(j=>({title:j.position,company:j.company,loc:j.location||'Remote',url:j.url,date:(j.date||'').slice(0,10),desc:stripHtml(j.description)}))}]
-  ];
-  const a=s.adzuna;
-  if(a&&a.id&&a.key){
-    srcs.push(['Adzuna',async()=>{const r=await fetch('https://api.adzuna.com/v1/api/jobs/'+a.country+'/search/1?app_id='+a.id+'&app_key='+a.key+'&what='+encodeURIComponent(q)+(a.where?'&where='+encodeURIComponent(a.where):'')+'&results_per_page=50&sort_by=date');const d=await r.json();return (d.results||[]).map(j=>({title:j.title,company:(j.company&&j.company.display_name)||'',loc:(j.location&&j.location.display_name)||'',url:j.redirect_url,date:(j.created||'').slice(0,10),desc:j.description||''}))}]);
-  }
-  const results=await Promise.allSettled(srcs.map(x=>x[1]()));
+  $('feedBtn').disabled=true;$('feedStatus').textContent='Loading…';$('feedList').innerHTML='';
   const status=[];let all=[];
-  results.forEach((r,i)=>{const n=srcs[i][0];if(r.status==='fulfilled'){status.push(n+' ✓'+r.value.length);all=all.concat(r.value)}else{status.push(n+' ✗')}});
+  // Primary source: our DB-backed ATS feed (Greenhouse/Lever/Ashby), already
+  // filtered to DE/DA/AE + US/Remote-US and ranked server-side (NYC + freshness).
+  try{
+    const r=await fetch('/api/jobs?days='+encodeURIComponent(days)+'&sort='+encodeURIComponent(sort)+(q?'&q='+encodeURIComponent(q):''));
+    const d=await r.json();
+    if(d.error) throw new Error(d.error);
+    all=all.concat((d.jobs||[]).map(j=>({title:j.title,company:j.company,loc:j.location||(j.remote?'Remote':''),url:j.url,date:(j.posted_at||'').slice(0,10),desc:j.description||'',is_new:j.is_new,srv:j.score})));
+    status.push('ATS boards ✓'+(d.jobs||[]).length);
+    if(d.totals) status.push(d.totals.new_today+' new today');
+  }catch(e){ status.push('ATS boards ✗ '+e.message+' — is the JobFlow server running?'); }
+  // Optional: the old remote aggregator boards, only when asked and a keyword is given.
+  if($('jf_remote').checked && q){
+    const qLc=q.toLowerCase(), qWords=qLc.split(/\s+/).filter(w=>w.length>2);
+    const matchQ=t=>{t=(t||'').toLowerCase();return qWords.some(w=>t.includes(w))};
+    const a=s.adzuna;
+    const srcs=[
+      ['Remotive',async()=>{const r=await fetch('https://remotive.com/api/remote-jobs?search='+encodeURIComponent(q)+'&limit=60');const d=await r.json();return (d.jobs||[]).map(j=>({title:j.title,company:j.company_name,loc:j.candidate_required_location||'Remote',url:j.url,date:(j.publication_date||'').slice(0,10),desc:stripHtml(j.description)}))}],
+      ['RemoteOK',async()=>{const r=await fetch('https://remoteok.com/api');const d=await r.json();return d.filter(j=>j&&j.position&&matchQ(j.position+' '+(j.tags||[]).join(' '))).map(j=>({title:j.position,company:j.company,loc:j.location||'Remote',url:j.url,date:(j.date||'').slice(0,10),desc:stripHtml(j.description)}))}]
+    ];
+    if(a&&a.id&&a.key){
+      srcs.push(['Adzuna',async()=>{const r=await fetch('https://api.adzuna.com/v1/api/jobs/'+a.country+'/search/1?app_id='+a.id+'&app_key='+a.key+'&what='+encodeURIComponent(q)+(a.where?'&where='+encodeURIComponent(a.where):'')+'&results_per_page=50&sort_by=date');const d=await r.json();return (d.results||[]).map(j=>({title:j.title,company:(j.company&&j.company.display_name)||'',loc:(j.location&&j.location.display_name)||'',url:j.redirect_url,date:(j.created||'').slice(0,10),desc:j.description||''}))}]);
+    }
+    const results=await Promise.allSettled(srcs.map(x=>x[1]()));
+    results.forEach((r,i)=>{const n=srcs[i][0];if(r.status==='fulfilled'){status.push(n+' ✓'+r.value.length);all=all.concat(r.value)}else{status.push(n+' ✗')}});
+  }
   const mine=profileTokenSet();
-  all.forEach(j=>j.score=scoreText(j.title+' '+j.desc,mine));
+  all.forEach(j=>{ j.score=scoreText(j.title+' '+j.desc,mine); });
   const seen=new Set();
   all=all.filter(j=>{const k=(j.title+'|'+j.company).toLowerCase();if(seen.has(k))return false;seen.add(k);return true});
-  all.sort((a2,b2)=>b2.score-a2.score);
+  // Keep the server's NYC+freshness order for ATS jobs (don't re-sort by token match).
   feedJobs=all;
-  try{store.set('feedCache',{ts:Date.now(),jobs:all.map(j=>({title:j.title,company:j.company,loc:j.loc,url:j.url,date:j.date,score:j.score,desc:(j.desc||'').slice(0,5000)}))})}catch(e){}
-  $('feedStatus').textContent=status.join(' · ')+' — '+all.length+' jobs found';
+  try{store.set('feedCache',{ts:Date.now(),jobs:all.map(j=>({title:j.title,company:j.company,loc:j.loc,url:j.url,date:j.date,score:j.score,is_new:j.is_new,desc:(j.desc||'').slice(0,5000)}))})}catch(e){}
+  $('feedStatus').textContent=status.join(' · ')+' — '+all.length+' shown';
   renderFeed();
   $('feedBtn').disabled=false;
+}
+
+// Companies manager (the ATS boards we pull from)
+async function loadCompanies(){
+  try{
+    const d=await (await fetch('/api/jobs/companies')).json();
+    const cs=d.companies||[];
+    $('jf_ccount').textContent=cs.length;
+    $('jf_companies').innerHTML=cs.length?cs.map(c=>
+      '<div class="row" style="justify-content:space-between;border-bottom:1px solid var(--border,#2a2a3a);padding:5px 0">'
+      +'<span>'+esc(c.name)+' <span style="opacity:.5">· '+esc(c.ats)+' · '+c.jobs+' jobs</span>'+(c.last_error?' <span style="color:#e0555a">⚠</span>':'')+'</span>'
+      +'<button class="btn ghost sm" data-delc="'+c.id+'">✕</button></div>'
+    ).join(''):'<i>No companies yet — click "Load starter list".</i>';
+    document.querySelectorAll('[data-delc]').forEach(b=>b.onclick=async()=>{await fetch('/api/jobs/companies/'+b.dataset.delc,{method:'DELETE'});loadCompanies();});
+  }catch(e){ $('jf_companies').innerHTML='<i>Server not reachable.</i>'; }
+}
+async function jfRefresh(){
+  $('jf_refresh').disabled=true;$('feedStatus').textContent='Refreshing from boards… (this runs in the background, ~30s)';
+  try{ await fetch('/api/jobs/refresh',{method:'POST'}); }catch(e){}
+  setTimeout(()=>{ $('jf_refresh').disabled=false; fetchFeed(); loadCompanies(); }, 25000);
 }
 function visibleFeed(){
   const min=+$('jf_min').value;
@@ -887,7 +947,7 @@ function renderFeed(){
   const list=visibleFeed();
   $('feedList').innerHTML=list.length?list.map((j,i)=>
     '<div class="card" style="padding:14px 18px"><div class="row" style="justify-content:space-between">'
-    +'<div style="flex:1;min-width:220px"><b>'+esc(j.title)+'</b><div class="small">'+esc(j.company)+' · '+esc(j.loc)+' · '+(j.date||'')+'</div></div>'
+    +'<div style="flex:1;min-width:220px"><b>'+esc(j.title)+'</b>'+(j.is_new?' <span class="status s-interview" style="font-size:10px">NEW</span>':'')+'<div class="small">'+esc(j.company)+' · '+esc(j.loc)+' · '+(j.date||'')+'</div></div>'
     +'<div class="row"><span class="status '+(j.score>=50?'s-interview':j.score>=30?'s-applied':'s-saved')+'">'+j.score+'% match</span>'
     +'<a class="btn ghost sm" href="'+j.url+'" target="_blank" rel="noopener">Open ↗</a>'
     +'<button class="btn ghost sm" data-fsave="'+i+'">💾 Save</button>'
@@ -912,10 +972,17 @@ function renderFeed(){
 $('feedBtn').onclick=fetchFeed;
 $('jf_min').onchange=renderFeed;
 $('jf_hide').onchange=renderFeed;
+$('jf_days').onchange=fetchFeed;
+$('jf_sort').onchange=fetchFeed;
+$('jf_refresh').onclick=jfRefresh;
+let jfYcOffset=0;
+$('jf_seed').onclick=async()=>{ $('jf_cmsg').textContent='Loading starter list…'; try{const r=await (await fetch('/api/jobs/companies/seed',{method:'POST'})).json(); $('jf_cmsg').textContent='Added '+(r.added||0)+' companies. Now click "↻ Refresh from boards".'; loadCompanies();}catch(e){$('jf_cmsg').textContent='Failed: '+e.message;} };
+$('jf_importyc').onclick=async()=>{ $('jf_importyc').disabled=true; $('jf_cmsg').textContent='Scanning YC companies for ATS boards (this takes a bit)…'; try{const r=await (await fetch('/api/jobs/companies/import-yc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({limit:100,offset:jfYcOffset})})).json(); jfYcOffset=r.nextOffset||jfYcOffset+100; $('jf_cmsg').textContent='Scanned '+r.scanned+', added '+r.added+' (next batch starts at '+jfYcOffset+' of '+r.total+'). Click again for more, then Refresh.'; loadCompanies();}catch(e){$('jf_cmsg').textContent='Failed: '+e.message;} $('jf_importyc').disabled=false; };
+$('jf_addbtn').onclick=async()=>{ const url=$('jf_addurl').value.trim(); if(!url)return; $('jf_cmsg').textContent='Detecting ATS…'; try{const r=await (await fetch('/api/jobs/companies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url})})).json(); if(r.error){$('jf_cmsg').textContent=r.error;} else {$('jf_cmsg').textContent='Added '+r.company.name+' ('+r.company.ats+'). Click "↻ Refresh from boards" to pull its jobs.'; $('jf_addurl').value=''; loadCompanies();} }catch(e){$('jf_cmsg').textContent='Failed: '+e.message;} };
 function loadFeedCfg(){
   const s=store.get('settings',{});const a=s.adzuna||{};
   $('jf_country').value=a.country||'us';$('jf_where').value=a.where||'';$('jf_aid').value=a.id||'';$('jf_akey').value=a.key||'';
-  const p=store.get('profile',{});if(p.title){$('jf_q').value=$('jf_q').value||p.title}
+  loadCompanies();
   const fc=store.get('feedCache',null);
   if(fc&&fc.jobs&&fc.jobs.length){
     feedJobs=fc.jobs;
