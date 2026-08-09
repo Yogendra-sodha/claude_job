@@ -25,6 +25,32 @@ function deepQueryAll(selector, root, out) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// ---- Poll for a custom dropdown's REAL options to render, up to timeoutMs ----
+// Skips "Loading…"/"Searching…" placeholders, so async/remote typeaheads (e.g. the
+// Greenhouse Location field, which searches over the network) get enough time to
+// return results instead of being abandoned after a fixed short wait.
+async function jfWaitForOptions(collect, timeoutMs) {
+  const real = (list) => list.filter((o) => {
+    const t = (o.textContent || '').trim();
+    return t && !/^(loading|searching|please wait|no results|type to|start typing|\.{2,}|…)/i.test(t);
+  });
+  const deadline = Date.now() + timeoutMs;
+  let opts = real(collect());
+  while (!opts.length && Date.now() < deadline) {
+    await sleep(150);
+    opts = real(collect());
+  }
+  return opts;
+}
+
+// Best single word to type into a typeahead to surface its options: the longest
+// alphanumeric word (more distinctive than the first — "protected" over "I",
+// "Jersey" over a stop-word), so react-select's filter reveals the right option.
+function jfSearchTerm(val) {
+  const words = String(val).replace(/[^a-zA-Z0-9 ]/g, ' ').trim().split(/\s+/).filter((w) => w.length >= 3);
+  return words.sort((a, b) => b.length - a.length)[0] || '';
+}
+
 // ---- Small transient on-page message (no ugly alert() spam) ----
 function jfFlash(msg, color) {
   let f = document.getElementById('jf-flash');
@@ -454,15 +480,15 @@ async function fillCustomDropdowns(P, filledKeys, entryCount) {
       control.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
       if (typeof control.click === 'function' && control !== t) control.click();
       t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-      await sleep(350);
 
       const collect = () => deepQueryAll('[role="option"], li[class*="option"], div[class*="option"], [class*="select__option"]')
         .filter((o) => { const b = o.getBoundingClientRect(); return b.width > 0 && b.height > 0; });
-      let opts = collect();
-      // If the menu didn't render, type the first word to filter it open (react-select)
+      // Wait for a synchronous menu to render; if none, type a query and wait for
+      // async/remote results (Greenhouse Location searches over the network).
+      let opts = await jfWaitForOptions(collect, 1500);
       if (!opts.length && t.tagName === 'INPUT') {
-        const term = String(val).replace(/[^a-zA-Z ]/g, ' ').trim().split(/\s+/)[0];
-        if (term && term.length >= 3) { isolatedSetVal(t, term); await sleep(350); opts = collect(); }
+        const term = jfSearchTerm(val);
+        if (term.length >= 3) { isolatedSetVal(t, term); opts = await jfWaitForOptions(collect, 2800); }
       }
       const hit = opts.find((o) => JFMatcher.matchOption(val, (o.textContent || '').toLowerCase(), kind));
       if (hit) {
@@ -475,8 +501,10 @@ async function fillCustomDropdowns(P, filledKeys, entryCount) {
         n++;
         await sleep(200);
       } else {
-        // Close the open menu gently. Do NOT click document.body — that runs
-        // the site's global handlers and surfaces their errors as ours.
+        // Clear any typed query so a dangling async menu doesn't bleed into the
+        // next field, then close the menu gently. Do NOT click document.body —
+        // that runs the site's global handlers and surfaces their errors as ours.
+        if (t.tagName === 'INPUT' && t.value) isolatedSetVal(t, '');
         t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         if (typeof t.blur === 'function') t.blur();
         await sleep(80);
@@ -680,13 +708,12 @@ async function openAndPickOption(t, val, kind, outline) {
     control.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
     if (typeof control.click === 'function' && control !== t) control.click();
     t.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
-    await sleep(350);
     const collect = () => deepQueryAll('[role="option"], li[class*="option"], div[class*="option"], [class*="select__option"]')
       .filter((o) => { const b = o.getBoundingClientRect(); return b.width > 0 && b.height > 0; });
-    let opts = collect();
+    let opts = await jfWaitForOptions(collect, 1500);
     if (!opts.length && t.tagName === 'INPUT') {
-      const term = String(val).replace(/[^a-zA-Z ]/g, ' ').trim().split(/\s+/)[0];
-      if (term && term.length >= 3) { isolatedSetVal(t, term); await sleep(350); opts = collect(); }
+      const term = jfSearchTerm(val);
+      if (term.length >= 3) { isolatedSetVal(t, term); opts = await jfWaitForOptions(collect, 2800); }
     }
     const hit = opts.find((o) => JFMatcher.matchOption(val, (o.textContent || '').toLowerCase(), kind))
       || opts.find((o) => (o.textContent || '').toLowerCase().trim() === String(val).toLowerCase().trim());
@@ -698,6 +725,9 @@ async function openAndPickOption(t, val, kind, outline) {
       await sleep(150);
       return true;
     }
+    // Clear any query we typed so a dangling async menu doesn't bleed into the
+    // next field, then close the menu.
+    if (t.tagName === 'INPUT' && t.value) isolatedSetVal(t, '');
     t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     if (typeof t.blur === 'function') t.blur();
     return false;
