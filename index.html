@@ -192,6 +192,7 @@
         
         <div class="field"><label>Gender</label><select id="p_gender"><option value="">Select...</option><option>Male</option><option>Female</option><option>Decline to self-identify</option></select></div>
         <div class="field"><label>Race / Ethnicity</label><select id="p_race"><option value="">Select...</option><option>Asian</option><option>Black or African American</option><option>Hispanic, Latino, or Spanish origin</option><option>Indigenous Peoples, First Nations, Native American, or Alaska Native</option><option>Native Hawaiian or Other Pacific Islander</option><option>White / Caucasian</option><option>Decline to self-identify</option></select></div>
+        <div class="field"><label>Hispanic or Latino?</label><select id="p_hispanic"><option value="">Select...</option><option value="no">No</option><option value="yes">Yes</option><option value="decline">Decline to self-identify</option></select></div>
         <div class="field"><label>Veteran Status</label><select id="p_veteran"><option value="">Select...</option><option>I identify as one or more of the classifications of protected veteran</option><option>I am not a protected veteran</option><option>I decline to self-identify for protected veteran status</option></select></div>
         <div class="field"><label>Disability Status</label><select id="p_disability"><option value="">Select...</option><option>Yes, I have a disability</option><option>No, I don't have a disability</option><option>I don't wish to answer</option></select></div>
         <div class="field"><label>18 years of age or older?</label><select id="p_age18"><option value="">Select...</option><option>Yes</option><option>No</option></select></div>
@@ -465,7 +466,7 @@ function goTab(v){document.querySelector('#nav button[data-v="'+v+'"]').click();
 
 /* ---------- PROFILE ---------- */
 const PF=['name','title','email','phone','location','linkedin','portfolio','years','summary','skills','experience','education'];
-const DEMO_F=['gender','race','veteran','disability','age18','contact_emp','sponsorship','authorized','pronouns','address1','address2','city','state','zip','country','github','website','edu_level','university','degree','major','gpa','salary','notice','source','relocate','prev_emp','noncompete','complianceDefault'];
+const DEMO_F=['gender','race','hispanic','veteran','disability','age18','contact_emp','sponsorship','authorized','pronouns','address1','address2','city','state','zip','country','github','website','edu_level','university','degree','major','gpa','salary','notice','source','relocate','prev_emp','noncompete','complianceDefault'];
 // ---- Repeatable education / work entry editors ----
 const EDU_COLS=[['school','School / University'],['degree','Degree'],['major','Major / Field'],['gpa','GPA'],['city','City'],['state','State'],['country','Country']];
 const WORK_COLS=[['company','Company'],['jobTitle','Job Title'],['location','Location'],['startDate','Start (MM/YYYY)'],['endDate','End (MM/YYYY)']];

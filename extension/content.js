@@ -51,6 +51,37 @@ function jfSearchTerm(val) {
   return words.sort((a, b) => b.length - a.length)[0] || '';
 }
 
+// Commit a matched dropdown option, VERIFYING it took effect. Clicking the option
+// works for most widgets, but some (e.g. certain Greenhouse EEO selects) only
+// commit on Enter of the highlighted row — a click there is a silent no-op, which
+// is why race/ethnicity "filled" but nothing was selected. So: click; if the menu
+// is still open, keyboard-navigate onto the matched row and press Enter. Returns
+// true only when the menu actually closed (real selection), never a false success.
+// `t` = the combobox input/trigger, `hit` = the matched option element, `collect`
+// = the option-collecting function used by the caller.
+async function jfSelectOption(t, hit, collect) {
+  try { hit.scrollIntoView({ block: 'nearest' }); } catch (e) {}
+  ['mouseover', 'mousemove', 'mousedown', 'mouseup'].forEach((tp) => hit.dispatchEvent(new MouseEvent(tp, { bubbles: true })));
+  if (typeof hit.click === 'function') hit.click();
+  await sleep(90);
+  let live = collect();
+  if (!live.length) return true;                       // menu closed → selection took
+  const sameText = (o) => (o.textContent || '').trim() === (hit.textContent || '').trim();
+  const idx = live.findIndex((o) => o === hit || sameText(o));
+  if (idx < 0) return false;
+  const cur = live.findIndex((o) => /focus|highlight|active|selected/i.test(o.className || ''));
+  const from = cur >= 0 ? cur : 0;
+  const key = idx >= from ? 'ArrowDown' : 'ArrowUp';
+  for (let k = 0; k < Math.abs(idx - from); k++) {
+    t.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    await sleep(25);
+  }
+  t.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  t.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+  await sleep(90);
+  return !collect().length;                            // selected iff the menu closed
+}
+
 // ---- Small transient on-page message (no ugly alert() spam) ----
 function jfFlash(msg, color) {
   let f = document.getElementById('jf-flash');
@@ -491,15 +522,12 @@ async function fillCustomDropdowns(P, filledKeys, entryCount) {
         if (term.length >= 3) { isolatedSetVal(t, term); opts = await jfWaitForOptions(collect, 2800); }
       }
       const hit = opts.find((o) => JFMatcher.matchOption(val, (o.textContent || '').toLowerCase(), kind));
-      if (hit) {
-        hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-        if (typeof hit.click === 'function') hit.click();
+      if (hit && await jfSelectOption(t, hit, collect)) {
         t.style.outline = '2px solid #3ecf8e';
         if (JFMatcher.SINGLE_FILL.has(key)) filledKeys.add(key);
         jfLogQA(f.label || f.idname, (hit.textContent || val).replace(/\s+/g, ' ').trim(), 'profile');
         n++;
-        await sleep(200);
+        await sleep(150);
       } else {
         // Clear any typed query so a dangling async menu doesn't bleed into the
         // next field, then close the menu gently. Do NOT click document.body —
@@ -717,12 +745,9 @@ async function openAndPickOption(t, val, kind, outline) {
     }
     const hit = opts.find((o) => JFMatcher.matchOption(val, (o.textContent || '').toLowerCase(), kind))
       || opts.find((o) => (o.textContent || '').toLowerCase().trim() === String(val).toLowerCase().trim());
-    if (hit) {
-      hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-      hit.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
-      if (typeof hit.click === 'function') hit.click();
+    if (hit && await jfSelectOption(t, hit, collect)) {
       t.style.outline = '2px solid ' + (outline || '#3ecf8e');
-      await sleep(150);
+      await sleep(120);
       return true;
     }
     // Clear any query we typed so a dangling async menu doesn't bleed into the

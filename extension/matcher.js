@@ -251,8 +251,14 @@
     })();
     const full = (profile.fullName || '').trim();
     const parts = full.split(/\s+/);
+    // Hispanic/Latino is an ETHNICITY asked separately from race. Derive it when
+    // not set explicitly: a race that says "Hispanic/Latino" (and not "not
+    // hispanic") → yes; ANY other specific race selection → no (a person who
+    // picked Asian/White/Black/… is answering "No" to the Hispanic question).
     let hispanic = d.hispanic || '';
-    if (!hispanic && d.race) hispanic = /not hispanic/i.test(d.race) ? 'no' : (/hispanic|latino/i.test(d.race) ? 'yes' : '');
+    if (!hispanic && d.race && d.race.trim()) {
+      hispanic = (/hispanic|latino/i.test(d.race) && !/not hispanic/i.test(d.race)) ? 'yes' : 'no';
+    }
 
     // Multi-entry resume data lives in the demographics blob. Fall back to a
     // single synthesized entry from the old flat fields for backward compat.
